@@ -60,6 +60,10 @@ let debugEl: HTMLDivElement | null = null;
 let startMarkerEl: HTMLDivElement | null = null;
 let goalMarkerEl: HTMLDivElement | null = null;
 
+// Store original styles for cleanup
+let modifiedElements: { el: HTMLElement; originalTransform: string }[] = [];
+let originalBodyTransformStyle = '';
+
 let boxes: Box[] = [];
 let grid: Map<string, Box[]> = new Map();
 let startBox: Box | null = null;
@@ -161,12 +165,16 @@ function scanDOM(initPlayer: boolean = false) {
   const vw = window.innerWidth;
   const vh = window.innerHeight;
 
+  // Restore previously modified elements before rescanning
+  restoreModifiedElements();
+
   boxes = [];
 
   for (const el of document.querySelectorAll('*')) {
     if (EXCLUDED_TAGS.has(el.tagName)) continue;
     if ((el as HTMLElement).id?.startsWith('dom3d-')) continue;
 
+    const htmlEl = el as HTMLElement;
     const style = getComputedStyle(el);
     if (style.display === 'none' || style.visibility === 'hidden') continue;
 
@@ -187,6 +195,17 @@ function scanDOM(initPlayer: boolean = false) {
     if (rect.bottom < -VIEWPORT_MARGIN || rect.top > vh + VIEWPORT_MARGIN) continue;
 
     const z = normalizeZ(Math.max(0, zIndex));
+
+    // Apply translateZ to make element float at its z-index height
+    // No perspective on body = no visual position shift, only Z offset
+    const originalTransform = htmlEl.style.transform;
+    modifiedElements.push({ el: htmlEl, originalTransform });
+
+    if (originalTransform && !originalTransform.includes('translateZ')) {
+      htmlEl.style.transform = `${originalTransform} translateZ(${z}px)`;
+    } else if (!originalTransform) {
+      htmlEl.style.transform = `translateZ(${z}px)`;
+    }
 
     boxes.push({
       x: rect.left,
@@ -216,6 +235,13 @@ function scanDOM(initPlayer: boolean = false) {
     pickStartGoal();
     initPlayerPosition();
   }
+}
+
+function restoreModifiedElements() {
+  for (const { el, originalTransform } of modifiedElements) {
+    el.style.transform = originalTransform;
+  }
+  modifiedElements = [];
 }
 
 function pickStartGoal() {
@@ -684,6 +710,10 @@ function init() {
   if (running) return;
   if (document.getElementById('dom3d-root')) return;
 
+  // Apply transform-style to body for 3D context (no perspective = no position shift)
+  originalBodyTransformStyle = document.body.style.transformStyle;
+  document.body.style.transformStyle = 'preserve-3d';
+
   createOverlay();
   scanDOM(true);  // scan with player initialization
   createPlayer();
@@ -720,6 +750,12 @@ function cleanup() {
   removeInput();
   window.removeEventListener('scroll', onScrollResize);
   window.removeEventListener('resize', onScrollResize);
+
+  // Restore body style
+  document.body.style.transformStyle = originalBodyTransformStyle;
+
+  // Restore modified DOM elements
+  restoreModifiedElements();
 
   root?.remove();
   debugEl?.remove();
