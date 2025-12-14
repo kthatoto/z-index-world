@@ -33,9 +33,12 @@ let playerEl = null;
 let debugEl = null;
 let startMarkerEl = null;
 let goalMarkerEl = null;
-// Store original styles for cleanup
-let modifiedElements = [];
-let originalBodyTransformStyle = '';
+// Z-planes system for Layers visualization
+let zPlanesContainer = null;
+let planes = new Map();
+let planeProxies = new Map();
+const BUCKET_SIZE = 3;
+const DEPTH_STEP = 40;
 let boxes = [];
 let grid = new Map();
 let startBox = null;
@@ -125,15 +128,12 @@ function normalizeZ(rawZ) {
 function scanDOM(initPlayer = false) {
     const vw = window.innerWidth;
     const vh = window.innerHeight;
-    // Restore previously modified elements before rescanning
-    restoreModifiedElements();
     boxes = [];
     for (const el of document.querySelectorAll('*')) {
         if (EXCLUDED_TAGS.has(el.tagName))
             continue;
         if (el.id?.startsWith('dom3d-'))
             continue;
-        const htmlEl = el;
         const style = getComputedStyle(el);
         if (style.display === 'none' || style.visibility === 'hidden')
             continue;
@@ -156,18 +156,7 @@ function scanDOM(initPlayer = false) {
         if (rect.bottom < -VIEWPORT_MARGIN || rect.top > vh + VIEWPORT_MARGIN)
             continue;
         const z = normalizeZ(Math.max(0, zIndex));
-        // Apply translateZ to make element float at its z-index height
-        // Use computed transform to preserve CSS-defined transforms (like translateX(-50%))
-        const originalInlineTransform = htmlEl.style.transform;
-        const computedTransform = style.transform;
-        modifiedElements.push({ el: htmlEl, originalTransform: originalInlineTransform });
-        // Preserve existing transform (from CSS or inline) when adding translateZ
-        if (computedTransform && computedTransform !== 'none' && !computedTransform.includes('translateZ')) {
-            htmlEl.style.transform = `${computedTransform} translateZ(${z}px)`;
-        }
-        else if (!computedTransform || computedTransform === 'none') {
-            htmlEl.style.transform = `translateZ(${z}px)`;
-        }
+        // No DOM modification - just collect box data for physics and proxy visualization
         boxes.push({
             x: rect.left,
             y: rect.top,
@@ -194,12 +183,8 @@ function scanDOM(initPlayer = false) {
         calculateJumpVelocity();
         initPlayerPosition();
     }
-}
-function restoreModifiedElements() {
-    for (const { el, originalTransform } of modifiedElements) {
-        el.style.transform = originalTransform;
-    }
-    modifiedElements = [];
+    // Rebuild Z planes after each scan
+    rebuildZPlanes();
 }
 function pickStartGoal() {
     if (boxes.length === 0)
@@ -689,6 +674,117 @@ function createMarkers() {
     document.head.appendChild(style);
 }
 // ============================================================================
+// Z-Planes System (for Layers visualization)
+// ============================================================================
+function createZPlanesContainer() {
+    if (!root)
+        return;
+    zPlanesContainer = document.createElement('div');
+    zPlanesContainer.id = 'dom3d-zplanes';
+    zPlanesContainer.style.cssText = `
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    transform-style: preserve-3d;
+  `;
+    root.appendChild(zPlanesContainer);
+}
+function rebuildZPlanes() {
+    if (!zPlanesContainer)
+        return;
+    // Exclude base floor (last element) from plane visualization
+    const stageBoxes = boxes.length > 1 ? boxes.slice(0, -1) : [];
+    if (stageBoxes.length === 0) {
+        // No stage boxes - clear all planes
+        for (const [bucketId, plane] of planes) {
+            plane.remove();
+        }
+        planes.clear();
+        planeProxies.clear();
+        return;
+    }
+    // Get unique Z values and create ranking
+    const uniqueZ = [...new Set(stageBoxes.map(b => b.z))].sort((a, b) => a - b);
+    // Group boxes by bucket
+    const bucketBoxes = new Map();
+    for (const box of stageBoxes) {
+        const rank = uniqueZ.indexOf(box.z);
+        const bucketId = Math.floor(rank / BUCKET_SIZE);
+        if (!bucketBoxes.has(bucketId)) {
+            bucketBoxes.set(bucketId, []);
+        }
+        bucketBoxes.get(bucketId).push(box);
+    }
+    // Remove planes that are no longer needed
+    const neededBuckets = new Set(bucketBoxes.keys());
+    for (const [bucketId, plane] of planes) {
+        if (!neededBuckets.has(bucketId)) {
+            plane.remove();
+            planes.delete(bucketId);
+            planeProxies.delete(bucketId);
+        }
+    }
+    // Create or update planes for each bucket
+    for (const [bucketId, boxesInBucket] of bucketBoxes) {
+        let plane = planes.get(bucketId);
+        let proxies = planeProxies.get(bucketId) || [];
+        // Create plane if it doesn't exist
+        if (!plane) {
+            plane = document.createElement('div');
+            plane.className = 'dom3d-zplane';
+            plane.style.cssText = `
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        transform-style: preserve-3d;
+      `;
+            zPlanesContainer.appendChild(plane);
+            planes.set(bucketId, plane);
+        }
+        // Update plane transform based on bucket
+        plane.style.transform = `translate3d(0px, 0px, ${bucketId * DEPTH_STEP}px)`;
+        // Ensure we have enough proxy divs (pool reuse)
+        while (proxies.length < boxesInBucket.length) {
+            const proxy = document.createElement('div');
+            proxy.className = 'dom3d-proxy';
+            proxy.style.cssText = `
+        position: absolute;
+        left: 0;
+        top: 0;
+        border: 1px solid rgba(0, 0, 0, 0.25);
+        background: transparent;
+        pointer-events: none;
+        box-sizing: border-box;
+      `;
+            plane.appendChild(proxy);
+            proxies.push(proxy);
+        }
+        // Hide excess proxies
+        for (let i = boxesInBucket.length; i < proxies.length; i++) {
+            proxies[i].style.display = 'none';
+        }
+        // Update proxy positions and sizes
+        for (let i = 0; i < boxesInBucket.length; i++) {
+            const box = boxesInBucket[i];
+            const proxy = proxies[i];
+            proxy.style.display = '';
+            proxy.style.width = `${box.w}px`;
+            proxy.style.height = `${box.h}px`;
+            proxy.style.transform = `translate3d(${box.x}px, ${box.y}px, 0px)`;
+        }
+        planeProxies.set(bucketId, proxies);
+    }
+}
+function cleanupZPlanes() {
+    for (const [_, plane] of planes) {
+        plane.remove();
+    }
+    planes.clear();
+    planeProxies.clear();
+    zPlanesContainer?.remove();
+    zPlanesContainer = null;
+}
+// ============================================================================
 // Input
 // ============================================================================
 function setupInput() {
@@ -796,11 +892,9 @@ function init() {
         return;
     if (document.getElementById('dom3d-root'))
         return;
-    // Apply transform-style to body for 3D context (no perspective = no position shift)
-    originalBodyTransformStyle = document.body.style.transformStyle;
-    document.body.style.transformStyle = 'preserve-3d';
     createOverlay();
-    scanDOM(true); // scan with player initialization
+    createZPlanesContainer();
+    scanDOM(true); // scan with player initialization (also builds Z planes)
     createPlayer();
     createDebugDisplay();
     createMarkers();
@@ -829,10 +923,8 @@ function cleanup() {
     removeInput();
     window.removeEventListener('scroll', onScrollResize);
     window.removeEventListener('resize', onScrollResize);
-    // Restore body style
-    document.body.style.transformStyle = originalBodyTransformStyle;
-    // Restore modified DOM elements
-    restoreModifiedElements();
+    // Cleanup Z planes system
+    cleanupZPlanes();
     root?.remove();
     playerEl?.remove(); // Player is in body, not root
     debugEl?.remove();
