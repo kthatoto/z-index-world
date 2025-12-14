@@ -50,6 +50,8 @@ let jumpQueued = false;
 let isGrounded = false;
 let groundZ = 0; // Z position of the floor the player is standing on (or would land on)
 let jumpVz = MIN_JUMP_VZ; // Dynamic jump velocity based on stage
+let goalReached = false;
+let celebrationEl = null;
 let running = false;
 let rafId = null;
 let scanTimerId = null;
@@ -374,11 +376,130 @@ function physics(dt) {
     // No virtual floor clamp - floor is determined by Box collision only
 }
 // ============================================================================
+// Goal Check & Celebration
+// ============================================================================
+function checkGoal() {
+    if (goalReached || !goalBox)
+        return;
+    // Check if player is on or above the goal
+    if (overlapX(player, goalBox) && overlapY(player, goalBox)) {
+        const goalTop = goalBox.z + goalBox.d;
+        // Player is standing on or near the goal
+        if (player.z >= goalTop - 5 && player.z <= goalTop + 50) {
+            goalReached = true;
+            showCelebration();
+        }
+    }
+}
+function showCelebration() {
+    if (celebrationEl)
+        return;
+    celebrationEl = document.createElement('div');
+    celebrationEl.id = 'dom3d-celebration';
+    celebrationEl.style.cssText = `
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.7);
+    z-index: 2147483647;
+    pointer-events: none;
+    animation: dom3d-fade-in 0.5s ease-out;
+  `;
+    celebrationEl.innerHTML = `
+    <div style="font-size: 80px; margin-bottom: 20px; animation: dom3d-bounce 0.6s ease-out;">🎉</div>
+    <div style="font-size: 48px; color: #f1c40f; font-weight: bold; text-shadow: 0 0 20px rgba(241, 196, 15, 0.8); animation: dom3d-scale-in 0.5s ease-out;">
+      GOAL!
+    </div>
+    <div style="font-size: 24px; color: #fff; margin-top: 20px; opacity: 0.8;">
+      Stage Clear!
+    </div>
+    <div style="font-size: 16px; color: #aaa; margin-top: 30px;">
+      Press R to restart
+    </div>
+  `;
+    // Add animations
+    const style = document.createElement('style');
+    style.id = 'dom3d-celebration-style';
+    style.textContent = `
+    @keyframes dom3d-fade-in {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+    @keyframes dom3d-bounce {
+      0% { transform: scale(0) rotate(-10deg); }
+      50% { transform: scale(1.3) rotate(5deg); }
+      100% { transform: scale(1) rotate(0deg); }
+    }
+    @keyframes dom3d-scale-in {
+      0% { transform: scale(0); opacity: 0; }
+      100% { transform: scale(1); opacity: 1; }
+    }
+    @keyframes dom3d-confetti {
+      0% { transform: translateY(0) rotate(0deg); opacity: 1; }
+      100% { transform: translateY(100vh) rotate(720deg); opacity: 0; }
+    }
+  `;
+    document.head.appendChild(style);
+    document.body.appendChild(celebrationEl);
+    // Add confetti
+    for (let i = 0; i < 50; i++) {
+        const confetti = document.createElement('div');
+        confetti.style.cssText = `
+      position: fixed;
+      top: -20px;
+      left: ${Math.random() * 100}%;
+      width: ${8 + Math.random() * 8}px;
+      height: ${8 + Math.random() * 8}px;
+      background: ${['#e74c3c', '#f1c40f', '#2ecc71', '#3498db', '#9b59b6', '#e91e63'][Math.floor(Math.random() * 6)]};
+      border-radius: ${Math.random() > 0.5 ? '50%' : '2px'};
+      z-index: 2147483647;
+      pointer-events: none;
+      animation: dom3d-confetti ${2 + Math.random() * 2}s ease-out ${Math.random() * 0.5}s forwards;
+    `;
+        confetti.className = 'dom3d-confetti';
+        document.body.appendChild(confetti);
+    }
+    // Add R key listener for restart
+    window.addEventListener('keydown', onRestartKey, true);
+}
+function onRestartKey(e) {
+    if (e.key.toLowerCase() === 'r') {
+        e.preventDefault();
+        restartGame();
+    }
+}
+function restartGame() {
+    // Remove celebration
+    celebrationEl?.remove();
+    celebrationEl = null;
+    document.getElementById('dom3d-celebration-style')?.remove();
+    document.querySelectorAll('.dom3d-confetti').forEach(el => el.remove());
+    window.removeEventListener('keydown', onRestartKey, true);
+    // Reset player position
+    goalReached = false;
+    if (startBox) {
+        player.x = startBox.x + startBox.w / 2 - player.w / 2;
+        player.y = startBox.y + startBox.h / 2 - player.h / 2;
+        player.z = startBox.z + startBox.d;
+        player.vx = 0;
+        player.vy = 0;
+        player.vz = 0;
+    }
+}
+// ============================================================================
 // Render - Using translate3d for X, Y, Z positioning
 // ============================================================================
 function render() {
     if (!playerEl)
         return;
+    // Check if player reached goal
+    checkGoal();
     // Use translate3d for positioning - Z is now properly reflected in CSS!
     // Shadow based on height above ground (not absolute Z)
     const heightAboveGround = Math.max(0, player.z - groundZ);
@@ -708,6 +829,12 @@ function cleanup() {
     root?.remove();
     debugEl?.remove();
     document.getElementById('dom3d-marker-style')?.remove();
+    // Cleanup celebration
+    celebrationEl?.remove();
+    celebrationEl = null;
+    document.getElementById('dom3d-celebration-style')?.remove();
+    document.querySelectorAll('.dom3d-confetti').forEach(el => el.remove());
+    window.removeEventListener('keydown', onRestartKey, true);
     root = null;
     playerEl = null;
     debugEl = null;
@@ -726,6 +853,7 @@ function cleanup() {
     isGrounded = false;
     groundZ = 0;
     jumpVz = MIN_JUMP_VZ;
+    goalReached = false;
     lastTime = 0;
     currentTransform = '';
     window.__DOM3D_ACTIVE__ = false;
