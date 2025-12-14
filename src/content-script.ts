@@ -377,8 +377,7 @@ function render() {
   playerEl.style.transform = currentTransform;
   playerEl.style.boxShadow = `${shadowOffset}px ${shadowOffset}px ${shadowBlur}px rgba(0,0,0,0.4)`;
 
-  // Update debug walls
-  updateDebugWalls();
+  // Debug walls are rebuilt after scanDOM, not every frame
 
   // Update debug display
   if (debugEl) {
@@ -548,10 +547,8 @@ function createMarkers() {
 }
 
 // ============================================================================
-// Debug Wall Visualization (element reuse to prevent leaks)
+// Debug Wall Visualization (show ALL boxes, element pool reuse)
 // ============================================================================
-
-const MAX_DEBUG_WALLS = 50;
 
 function createDebugWallElement(): HTMLDivElement {
   const el = document.createElement('div');
@@ -561,35 +558,35 @@ function createDebugWallElement(): HTMLDivElement {
     left: 0;
     top: 0;
     pointer-events: none;
-    will-change: transform;
   `;
   return el;
 }
 
-function updateDebugWalls() {
+// Rebuild debug walls from ALL boxes (called after scanDOM, not every frame)
+function rebuildDebugWalls() {
   if (!root) return;
 
-  const nearby = queryNearby(player);
-  const requiredCount = Math.min(nearby.length, MAX_DEBUG_WALLS);
+  const requiredCount = boxes.length;
 
-  // Add more elements if needed
+  // Add more elements if needed (pool expansion)
   while (debugWallEls.length < requiredCount) {
     const el = createDebugWallElement();
     root.appendChild(el);
     debugWallEls.push(el);
   }
 
-  // Remove excess elements
+  // Remove excess elements (pool shrink)
   while (debugWallEls.length > requiredCount) {
     const el = debugWallEls.pop();
     el?.remove();
   }
 
-  // Update all elements
+  // Update all elements with box data
   for (let i = 0; i < requiredCount; i++) {
-    const box = nearby[i];
+    const box = boxes[i];
     const el = debugWallEls[i];
 
+    // Color based on Z height (lower = green, higher = red)
     const zRatio = Math.min(1, (box.z + box.d) / 500);
     const r = Math.floor(255 * zRatio);
     const g = Math.floor(255 * (1 - zRatio));
@@ -666,6 +663,7 @@ function loop(currentTime: number) {
 
 function onScrollResize() {
   scanDOM(false);  // rescan without reinitializing player
+  rebuildDebugWalls();
   updateMarkers();
 }
 
@@ -705,14 +703,18 @@ function init() {
 
   createOverlay();
   scanDOM(true);  // scan with player initialization
+  rebuildDebugWalls();  // build walls for ALL boxes
   createPlayer();
   createDebugDisplay();
   createMarkers();
-  // Debug walls will be created by updateDebugWalls() in first render
   setupInput();
   setupMessageListener();
 
-  scanTimerId = window.setInterval(() => scanDOM(false), SCAN_INTERVAL);
+  // Periodic rescan (also rebuilds debug walls)
+  scanTimerId = window.setInterval(() => {
+    scanDOM(false);
+    rebuildDebugWalls();
+  }, SCAN_INTERVAL);
   window.addEventListener('scroll', onScrollResize, { passive: true });
   window.addEventListener('resize', onScrollResize, { passive: true });
 
