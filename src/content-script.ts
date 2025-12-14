@@ -59,10 +59,6 @@ let playerEl: HTMLDivElement | null = null;
 let debugEl: HTMLDivElement | null = null;
 let startMarkerEl: HTMLDivElement | null = null;
 let goalMarkerEl: HTMLDivElement | null = null;
-let debugWallEls: HTMLDivElement[] = [];
-
-// Store original styles for cleanup
-let modifiedElements: { el: HTMLElement; originalTransform: string; originalTransformStyle: string }[] = [];
 
 let boxes: Box[] = [];
 let grid: Map<string, Box[]> = new Map();
@@ -85,9 +81,6 @@ let rafId: number | null = null;
 let scanTimerId: number | null = null;
 let lastTime = 0;
 
-// Store original body styles for cleanup
-let originalBodyTransformStyle = '';
-let originalBodyPerspective = '';
 
 // Track current transform for debug display
 let currentTransform = '';
@@ -168,16 +161,12 @@ function scanDOM(initPlayer: boolean = false) {
   const vw = window.innerWidth;
   const vh = window.innerHeight;
 
-  // Restore previously modified elements before rescanning
-  restoreModifiedElements();
-
   boxes = [];
 
   for (const el of document.querySelectorAll('*')) {
     if (EXCLUDED_TAGS.has(el.tagName)) continue;
     if ((el as HTMLElement).id?.startsWith('dom3d-')) continue;
 
-    const htmlEl = el as HTMLElement;
     const style = getComputedStyle(el);
     if (style.display === 'none' || style.visibility === 'hidden') continue;
 
@@ -199,19 +188,6 @@ function scanDOM(initPlayer: boolean = false) {
 
     const z = normalizeZ(Math.max(0, zIndex));
 
-    // Apply 3D transform to actual DOM element
-    const originalTransform = htmlEl.style.transform;
-    const originalTransformStyle = htmlEl.style.transformStyle;
-    modifiedElements.push({ el: htmlEl, originalTransform, originalTransformStyle });
-
-    // Apply translateZ to make element float at its z-index height
-    htmlEl.style.transformStyle = 'preserve-3d';
-    if (originalTransform && !originalTransform.includes('translateZ')) {
-      htmlEl.style.transform = `${originalTransform} translateZ(${z}px)`;
-    } else {
-      htmlEl.style.transform = `translateZ(${z}px)`;
-    }
-
     boxes.push({
       x: rect.left,
       y: rect.top,
@@ -223,7 +199,6 @@ function scanDOM(initPlayer: boolean = false) {
   }
 
   // Add base floor from documentElement (real element-derived floor, not virtual clamp)
-  // This is added at the END of boxes array so we can skip it in debug wall visualization
   const docRect = document.documentElement.getBoundingClientRect();
   const baseFloor: Box = {
     x: docRect.left,
@@ -241,14 +216,6 @@ function scanDOM(initPlayer: boolean = false) {
     pickStartGoal();
     initPlayerPosition();
   }
-}
-
-function restoreModifiedElements() {
-  for (const { el, originalTransform, originalTransformStyle } of modifiedElements) {
-    el.style.transform = originalTransform;
-    el.style.transformStyle = originalTransformStyle;
-  }
-  modifiedElements = [];
 }
 
 function pickStartGoal() {
@@ -618,61 +585,6 @@ function createMarkers() {
 }
 
 // ============================================================================
-// Debug Wall Visualization (show ALL boxes, element pool reuse)
-// ============================================================================
-
-function createDebugWallElement(): HTMLDivElement {
-  const el = document.createElement('div');
-  el.className = 'dom3d-debug-wall';
-  el.style.cssText = `
-    position: absolute;
-    left: 0;
-    top: 0;
-    pointer-events: none;
-  `;
-  return el;
-}
-
-// Rebuild debug walls from ALL boxes (called after scanDOM, not every frame)
-function rebuildDebugWalls() {
-  if (!root) return;
-
-  // Skip the last element (base floor) - it covers the whole viewport
-  const requiredCount = Math.max(0, boxes.length - 1);
-
-  // Add more elements if needed (pool expansion)
-  while (debugWallEls.length < requiredCount) {
-    const el = createDebugWallElement();
-    root.appendChild(el);
-    debugWallEls.push(el);
-  }
-
-  // Remove excess elements (pool shrink)
-  while (debugWallEls.length > requiredCount) {
-    const el = debugWallEls.pop();
-    el?.remove();
-  }
-
-  // Update all elements with box data
-  for (let i = 0; i < requiredCount; i++) {
-    const box = boxes[i];
-    const el = debugWallEls[i];
-
-    // Color based on Z height (lower = green, higher = red)
-    const zRatio = Math.min(1, (box.z + box.d) / 500);
-    const r = Math.floor(255 * zRatio);
-    const g = Math.floor(255 * (1 - zRatio));
-    const b = 100;
-
-    el.style.width = `${box.w}px`;
-    el.style.height = `${box.h}px`;
-    el.style.background = `rgba(${r}, ${g}, ${b}, 0.2)`;
-    el.style.border = `1px solid rgba(${r}, ${g}, ${b}, 0.6)`;
-    el.style.transform = `translate3d(${box.x}px, ${box.y}px, ${box.z}px)`;
-  }
-}
-
-// ============================================================================
 // Input
 // ============================================================================
 
@@ -735,7 +647,6 @@ function loop(currentTime: number) {
 
 function onScrollResize() {
   scanDOM(false);  // rescan without reinitializing player
-  rebuildDebugWalls();
   updateMarkers();
 }
 
@@ -773,25 +684,17 @@ function init() {
   if (running) return;
   if (document.getElementById('dom3d-root')) return;
 
-  // Apply 3D perspective to body so elements can float in 3D
-  originalBodyTransformStyle = document.body.style.transformStyle;
-  originalBodyPerspective = document.body.style.perspective;
-  document.body.style.transformStyle = 'preserve-3d';
-  document.body.style.perspective = '1000px';
-
   createOverlay();
   scanDOM(true);  // scan with player initialization
-  rebuildDebugWalls();  // build walls for ALL boxes
   createPlayer();
   createDebugDisplay();
   createMarkers();
   setupInput();
   setupMessageListener();
 
-  // Periodic rescan (also rebuilds debug walls)
+  // Periodic rescan
   scanTimerId = window.setInterval(() => {
     scanDOM(false);
-    rebuildDebugWalls();
   }, SCAN_INTERVAL);
   window.addEventListener('scroll', onScrollResize, { passive: true });
   window.addEventListener('resize', onScrollResize, { passive: true });
@@ -818,22 +721,9 @@ function cleanup() {
   window.removeEventListener('scroll', onScrollResize);
   window.removeEventListener('resize', onScrollResize);
 
-  // Restore body styles
-  document.body.style.transformStyle = originalBodyTransformStyle;
-  document.body.style.perspective = originalBodyPerspective;
-
-  // Restore modified DOM elements
-  restoreModifiedElements();
-
   root?.remove();
   debugEl?.remove();
   document.getElementById('dom3d-marker-style')?.remove();
-
-  // Clean up debug walls
-  for (const el of debugWallEls) {
-    el.remove();
-  }
-  debugWallEls = [];
 
   root = null;
   playerEl = null;
