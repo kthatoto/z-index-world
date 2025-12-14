@@ -1,6 +1,6 @@
 // ============================================================================
 // z-index-world: 3D Box AABB Collision System
-// 床板モデル禁止。全てBox vs Boxの3D AABBのみ。
+// 軸分離衝突判定：X解決時はYZ重なり、Y解決時はXZ重なり、Z解決時はXY重なりで判定
 // ============================================================================
 
 // ============================================================================
@@ -32,9 +32,12 @@ const SCAN_INTERVAL = 800;
 const VIEWPORT_MARGIN = 300;
 
 const PLAYER_SIZE = 20;
-const MOVE_SPEED = 5;
-const GRAVITY = 0.5;
-const JUMP_VZ = 12;
+const PLAYER_DEPTH = 20;
+
+// Physics constants (per second, will be multiplied by dt)
+const MOVE_SPEED = 300;  // pixels per second
+const GRAVITY = 800;     // pixels per second^2
+const JUMP_VZ = 350;     // pixels per second
 
 const EXCLUDED_TAGS = new Set([
   'HTML', 'BODY', 'HEAD', 'SCRIPT', 'STYLE', 'META', 'LINK', 'NOSCRIPT',
@@ -58,19 +61,21 @@ let goalBox: Box | null = null;
 
 let player: Player = {
   x: 100, y: 100, z: 0,
-  w: PLAYER_SIZE, h: PLAYER_SIZE, d: PLAYER_SIZE,
+  w: PLAYER_SIZE, h: PLAYER_SIZE, d: PLAYER_DEPTH,
   vx: 0, vy: 0, vz: 0
 };
 
 let keys = { h: false, j: false, k: false, l: false, space: false };
 let jumpQueued = false;
+let isGrounded = false;
 
 let running = false;
 let rafId: number | null = null;
 let scanTimerId: number | null = null;
+let lastTime = 0;
 
 // ============================================================================
-// 3D AABB Collision
+// 3D AABB Collision - Axis Separated
 // ============================================================================
 
 function overlapX(a: Box, b: Box): boolean {
@@ -85,6 +90,7 @@ function overlapZ(a: Box, b: Box): boolean {
   return a.z < b.z + b.d && a.z + a.d > b.z;
 }
 
+// Full 3D intersection (for reference, but NOT used in axis resolution)
 function intersects(a: Box, b: Box): boolean {
   return overlapX(a, b) && overlapY(a, b) && overlapZ(a, b);
 }
@@ -97,9 +103,9 @@ function cellKey(cx: number, cy: number): string {
   return `${cx},${cy}`;
 }
 
-function buildGrid(boxes: Box[]): Map<string, Box[]> {
+function buildGrid(boxList: Box[]): Map<string, Box[]> {
   const g = new Map<string, Box[]>();
-  for (const box of boxes) {
+  for (const box of boxList) {
     const x1 = Math.floor(box.x / GRID_CELL);
     const x2 = Math.floor((box.x + box.w) / GRID_CELL);
     const y1 = Math.floor(box.y / GRID_CELL);
@@ -167,29 +173,8 @@ function scan() {
   }
 
   grid = buildGrid(boxes);
-
-  // スタート: 最もzが低いボックス、ゴール: 最もzが高いボックス
-  if (boxes.length > 0) {
-    startBox = boxes.reduce((a, b) => a.z < b.z ? a : b);
-    goalBox = boxes.reduce((a, b) => a.z > b.z ? a : b);
-  }
-
-  // 初期位置: スタートボックスの上（ただし重なる全ボックスの最上部に配置）
-  if (boxes.length > 0 && player.z === 0 && player.vz === 0 && startBox) {
-    player.x = startBox.x + startBox.w / 2 - player.w / 2;
-    player.y = startBox.y + startBox.h / 2 - player.h / 2;
-
-    // スポーン位置で重なっている全ボックスの最上部を探す
-    let maxTop = startBox.z + startBox.d;
-    for (const box of boxes) {
-      if (player.x < box.x + box.w && player.x + player.w > box.x &&
-          player.y < box.y + box.h && player.y + player.h > box.y) {
-        const top = box.z + box.d;
-        if (top > maxTop) maxTop = top;
-      }
-    }
-    player.z = maxTop;
-  }
+  pickStartGoal();
+  initPlayerPosition();
 }
 
 function rescan() {
@@ -226,11 +211,36 @@ function rescan() {
   grid = buildGrid(boxes);
 }
 
+function pickStartGoal() {
+  if (boxes.length === 0) return;
+  startBox = boxes.reduce((a, b) => a.z < b.z ? a : b);
+  goalBox = boxes.reduce((a, b) => a.z > b.z ? a : b);
+}
+
+function initPlayerPosition() {
+  if (boxes.length === 0 || !startBox) return;
+  // Only initialize if player hasn't moved yet
+  if (player.z !== 0 || player.vz !== 0) return;
+
+  player.x = startBox.x + startBox.w / 2 - player.w / 2;
+  player.y = startBox.y + startBox.h / 2 - player.h / 2;
+
+  // Find highest box top at spawn position
+  let maxTop = startBox.z + startBox.d;
+  for (const box of boxes) {
+    if (overlapX(player, box) && overlapY(player, box)) {
+      const top = box.z + box.d;
+      if (top > maxTop) maxTop = top;
+    }
+  }
+  player.z = maxTop;
+}
+
 // ============================================================================
-// Physics (AABB Only)
+// Physics - Axis Separated AABB Resolution
 // ============================================================================
 
-function physics() {
+function physics(dt: number) {
   // 1) Input -> velocity
   player.vx = 0;
   player.vy = 0;
@@ -239,80 +249,86 @@ function physics() {
   if (keys.k) player.vy = -MOVE_SPEED;
   if (keys.j) player.vy = MOVE_SPEED;
 
-  // Jump: キュー方式（keydownイベントで即座にキュー）
-  if (jumpQueued) {
+  // Jump: only when grounded
+  if (jumpQueued && isGrounded) {
     player.vz = JUMP_VZ;
-    jumpQueued = false;
+    isGrounded = false;
   }
+  jumpQueued = false;
 
   // 2) Gravity
-  player.vz -= GRAVITY;
+  player.vz -= GRAVITY * dt;
 
   // 3) Get nearby boxes
   const nearby = queryNearby(player);
 
-  // Helper: check if player was already intersecting before move (for X/Y only)
-  const wasIntersectingX = (box: Box, oldX: number) =>
-    oldX < box.x + box.w && oldX + player.w > box.x &&
-    player.y < box.y + box.h && player.y + player.h > box.y &&
-    player.z < box.z + box.d && player.z + player.d > box.z;
-
-  const wasIntersectingY = (box: Box, oldY: number) =>
-    player.x < box.x + box.w && player.x + player.w > box.x &&
-    oldY < box.y + box.h && oldY + player.h > box.y &&
-    player.z < box.z + box.d && player.z + player.d > box.z;
-
-  // 4) Move X -> resolve (only if newly entered box)
-  const oldX = player.x;
-  player.x += player.vx;
+  // 4) Resolve X axis
+  // Move X, then check boxes where Y and Z overlap -> resolve X penetration
+  player.x += player.vx * dt;
   for (const box of nearby) {
-    if (!wasIntersectingX(box, oldX) && intersects(player, box)) {
-      const penL = (player.x + player.w) - box.x;
-      const penR = (box.x + box.w) - player.x;
-      if (penL < penR) {
-        player.x -= penL;
+    // Condition for X resolution: Y and Z must overlap
+    if (overlapY(player, box) && overlapZ(player, box) && overlapX(player, box)) {
+      // Calculate penetration from both sides
+      const penLeft = (player.x + player.w) - box.x;   // player's right into box's left
+      const penRight = (box.x + box.w) - player.x;     // box's right into player's left
+
+      // Push out from the side with less penetration
+      if (penLeft < penRight) {
+        player.x = box.x - player.w;
       } else {
-        player.x += penR;
+        player.x = box.x + box.w;
       }
       player.vx = 0;
     }
   }
 
-  // Move Y -> resolve (only if newly entered box)
-  const oldY = player.y;
-  player.y += player.vy;
+  // 5) Resolve Y axis
+  // Move Y, then check boxes where X and Z overlap -> resolve Y penetration
+  player.y += player.vy * dt;
   for (const box of nearby) {
-    if (!wasIntersectingY(box, oldY) && intersects(player, box)) {
-      const penT = (player.y + player.h) - box.y;
-      const penB = (box.y + box.h) - player.y;
-      if (penT < penB) {
-        player.y -= penT;
+    // Condition for Y resolution: X and Z must overlap
+    if (overlapX(player, box) && overlapZ(player, box) && overlapY(player, box)) {
+      const penTop = (player.y + player.h) - box.y;    // player's bottom into box's top
+      const penBottom = (box.y + box.h) - player.y;    // box's bottom into player's top
+
+      if (penTop < penBottom) {
+        player.y = box.y - player.h;
       } else {
-        player.y += penB;
+        player.y = box.y + box.h;
       }
       player.vy = 0;
     }
   }
 
-  // Move Z -> resolve (ALWAYS resolve Z to ensure proper landing/ceiling collision)
-  player.z += player.vz;
+  // 6) Resolve Z axis
+  // Move Z, then check boxes where X and Y overlap -> resolve Z penetration
+  player.z += player.vz * dt;
+  isGrounded = false;  // Will be set true if we land on something
+
   for (const box of nearby) {
-    if (intersects(player, box)) {
-      const penF = (player.z + player.d) - box.z;
-      const penB = (box.z + box.d) - player.z;
-      if (penF < penB) {
-        player.z -= penF;
+    // Condition for Z resolution: X and Y must overlap
+    if (overlapX(player, box) && overlapY(player, box) && overlapZ(player, box)) {
+      const penFront = (player.z + player.d) - box.z;  // player's top into box's bottom
+      const penBack = (box.z + box.d) - player.z;      // box's top into player's bottom
+
+      if (penFront < penBack) {
+        // Hit ceiling
+        player.z = box.z - player.d;
+        player.vz = 0;
       } else {
+        // Land on floor
         player.z = box.z + box.d;
+        player.vz = 0;
+        isGrounded = true;
       }
-      player.vz = 0;
     }
   }
 
-  // 5) Floor at z=0
+  // 7) Floor at z=0 (world floor)
   if (player.z < 0) {
     player.z = 0;
     player.vz = 0;
+    isGrounded = true;
   }
 }
 
@@ -322,16 +338,26 @@ function physics() {
 
 function render() {
   if (!playerEl) return;
-  playerEl.style.transform = `translate3d(${player.x}px, ${player.y}px, ${player.z}px)`;
+
+  // Player position (2D representation, z affects visual only via scale or shadow)
+  playerEl.style.left = `${player.x}px`;
+  playerEl.style.top = `${player.y}px`;
+
+  // Use scale or shadow to indicate Z height
+  const zScale = 1 + player.z / 500;
+  const shadowBlur = Math.max(0, player.z / 5);
+  playerEl.style.transform = `scale(${zScale})`;
+  playerEl.style.boxShadow = `0 ${shadowBlur}px ${shadowBlur * 2}px rgba(0,0,0,0.3)`;
 
   // Update debug display
   if (debugEl) {
     debugEl.innerHTML = `
-      <div style="margin-bottom: 4px; color: #fff; font-weight: bold;">🎮 z-index-world</div>
+      <div style="margin-bottom: 4px; color: #fff; font-weight: bold;">z-index-world</div>
       <div>X: <span style="color: #f66">${player.x.toFixed(0)}</span></div>
       <div>Y: <span style="color: #6f6">${player.y.toFixed(0)}</span></div>
       <div>Z: <span style="color: #66f">${player.z.toFixed(0)}</span></div>
-      <div style="margin-top: 4px; font-size: 10px; color: #888;">HJKL:移動 Space:ジャンプ</div>
+      <div>Grounded: <span style="color: ${isGrounded ? '#0f0' : '#f00'}">${isGrounded ? 'Yes' : 'No'}</span></div>
+      <div style="margin-top: 4px; font-size: 10px; color: #888;">HJKL:Move Space:Jump</div>
     `;
   }
 }
@@ -349,13 +375,12 @@ function createOverlay() {
     width: 100vw; height: 100vh;
     pointer-events: none;
     z-index: 2147483647;
-    transform-style: preserve-3d;
   `;
   document.body.appendChild(root);
 }
 
 // ============================================================================
-// Create 6-Face Player Cube
+// Create Player (2D div - no CSS 3D cube needed)
 // ============================================================================
 
 function createPlayer() {
@@ -367,33 +392,12 @@ function createPlayer() {
     position: absolute;
     width: ${PLAYER_SIZE}px;
     height: ${PLAYER_SIZE}px;
-    transform-style: preserve-3d;
+    background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%);
+    border: 2px solid #fff;
+    border-radius: 4px;
+    box-sizing: border-box;
+    transform-origin: center center;
   `;
-
-  const half = PLAYER_SIZE / 2;
-  const faces = [
-    { transform: `translateZ(${half}px)`, bg: '#e74c3c' },
-    { transform: `rotateY(180deg) translateZ(${half}px)`, bg: '#c0392b' },
-    { transform: `rotateY(-90deg) translateZ(${half}px)`, bg: '#e67e22' },
-    { transform: `rotateY(90deg) translateZ(${half}px)`, bg: '#d35400' },
-    { transform: `rotateX(90deg) translateZ(${half}px)`, bg: '#f1c40f' },
-    { transform: `rotateX(-90deg) translateZ(${half}px)`, bg: '#f39c12' },
-  ];
-
-  for (const face of faces) {
-    const div = document.createElement('div');
-    div.style.cssText = `
-      position: absolute;
-      width: ${PLAYER_SIZE}px;
-      height: ${PLAYER_SIZE}px;
-      background: ${face.bg};
-      border: 1px solid rgba(0,0,0,0.3);
-      box-sizing: border-box;
-      transform: ${face.transform};
-      backface-visibility: hidden;
-    `;
-    playerEl.appendChild(div);
-  }
 
   root.appendChild(playerEl);
   render();
@@ -404,8 +408,6 @@ function createPlayer() {
 // ============================================================================
 
 function createDebugDisplay() {
-  if (!root) return;
-
   debugEl = document.createElement('div');
   debugEl.id = 'dom3d-debug';
   debugEl.style.cssText = `
@@ -428,7 +430,7 @@ function createDebugDisplay() {
 }
 
 // ============================================================================
-// Create Markers
+// Create Markers (Start / Goal)
 // ============================================================================
 
 function createMarkers() {
@@ -440,20 +442,14 @@ function createMarkers() {
     startMarkerEl.id = 'dom3d-start-marker';
     startMarkerEl.style.cssText = `
       position: absolute;
+      left: ${startBox.x + startBox.w / 2 - 15}px;
+      top: ${startBox.y + startBox.h / 2 - 15}px;
       width: 30px;
       height: 30px;
       background: rgba(46, 204, 113, 0.8);
       border: 2px solid #27ae60;
       border-radius: 50%;
-      transform: translate3d(${startBox.x + startBox.w / 2 - 15}px, ${startBox.y + startBox.h / 2 - 15}px, ${startBox.z + startBox.d + 1}px);
       box-shadow: 0 0 10px rgba(46, 204, 113, 0.5);
-    `;
-    // Add "S" label
-    const label = document.createElement('div');
-    label.style.cssText = `
-      position: absolute;
-      width: 100%;
-      height: 100%;
       display: flex;
       align-items: center;
       justify-content: center;
@@ -462,8 +458,7 @@ function createMarkers() {
       font-size: 14px;
       font-family: sans-serif;
     `;
-    label.textContent = 'S';
-    startMarkerEl.appendChild(label);
+    startMarkerEl.textContent = 'S';
     root.appendChild(startMarkerEl);
   }
 
@@ -473,21 +468,14 @@ function createMarkers() {
     goalMarkerEl.id = 'dom3d-goal-marker';
     goalMarkerEl.style.cssText = `
       position: absolute;
+      left: ${goalBox.x + goalBox.w / 2 - 15}px;
+      top: ${goalBox.y + goalBox.h / 2 - 15}px;
       width: 30px;
       height: 30px;
       background: rgba(241, 196, 15, 0.8);
       border: 2px solid #f39c12;
       border-radius: 50%;
-      transform: translate3d(${goalBox.x + goalBox.w / 2 - 15}px, ${goalBox.y + goalBox.h / 2 - 15}px, ${goalBox.z + goalBox.d + 1}px);
       box-shadow: 0 0 15px rgba(241, 196, 15, 0.7);
-      animation: pulse 1.5s ease-in-out infinite;
-    `;
-    // Add "G" label
-    const label = document.createElement('div');
-    label.style.cssText = `
-      position: absolute;
-      width: 100%;
-      height: 100%;
       display: flex;
       align-items: center;
       justify-content: center;
@@ -495,9 +483,9 @@ function createMarkers() {
       font-weight: bold;
       font-size: 14px;
       font-family: sans-serif;
+      animation: dom3d-pulse 1.5s ease-in-out infinite;
     `;
-    label.textContent = 'G';
-    goalMarkerEl.appendChild(label);
+    goalMarkerEl.textContent = 'G';
     root.appendChild(goalMarkerEl);
   }
 
@@ -505,9 +493,9 @@ function createMarkers() {
   const style = document.createElement('style');
   style.id = 'dom3d-marker-style';
   style.textContent = `
-    @keyframes pulse {
-      0%, 100% { transform: translate3d(${goalBox ? goalBox.x + goalBox.w / 2 - 15 : 0}px, ${goalBox ? goalBox.y + goalBox.h / 2 - 15 : 0}px, ${goalBox ? goalBox.z + goalBox.d + 1 : 0}px) scale(1); }
-      50% { transform: translate3d(${goalBox ? goalBox.x + goalBox.w / 2 - 15 : 0}px, ${goalBox ? goalBox.y + goalBox.h / 2 - 15 : 0}px, ${goalBox ? goalBox.z + goalBox.d + 1 : 0}px) scale(1.1); }
+    @keyframes dom3d-pulse {
+      0%, 100% { transform: scale(1); box-shadow: 0 0 15px rgba(241, 196, 15, 0.7); }
+      50% { transform: scale(1.1); box-shadow: 0 0 25px rgba(241, 196, 15, 0.9); }
     }
   `;
   document.head.appendChild(style);
@@ -554,13 +542,19 @@ function isInputEl(el: Element | null): boolean {
 }
 
 // ============================================================================
-// Main Loop
+// Main Loop (with delta time)
 // ============================================================================
 
-function loop() {
+function loop(currentTime: number) {
   if (!running) return;
-  physics();
+
+  // Calculate delta time (capped to prevent huge jumps)
+  const dt = Math.min((currentTime - lastTime) / 1000, 0.1);
+  lastTime = currentTime;
+
+  physics(dt);
   render();
+
   rafId = requestAnimationFrame(loop);
 }
 
@@ -570,6 +564,18 @@ function loop() {
 
 function onScrollResize() {
   rescan();
+  updateMarkers();
+}
+
+function updateMarkers() {
+  if (startMarkerEl && startBox) {
+    startMarkerEl.style.left = `${startBox.x + startBox.w / 2 - 15}px`;
+    startMarkerEl.style.top = `${startBox.y + startBox.h / 2 - 15}px`;
+  }
+  if (goalMarkerEl && goalBox) {
+    goalMarkerEl.style.left = `${goalBox.x + goalBox.w / 2 - 15}px`;
+    goalMarkerEl.style.top = `${goalBox.y + goalBox.h / 2 - 15}px`;
+  }
 }
 
 // ============================================================================
@@ -606,6 +612,7 @@ function init() {
   window.addEventListener('resize', onScrollResize, { passive: true });
 
   running = true;
+  lastTime = performance.now();
   rafId = requestAnimationFrame(loop);
 }
 
@@ -642,10 +649,12 @@ function cleanup() {
 
   player = {
     x: 100, y: 100, z: 0,
-    w: PLAYER_SIZE, h: PLAYER_SIZE, d: PLAYER_SIZE,
+    w: PLAYER_SIZE, h: PLAYER_SIZE, d: PLAYER_DEPTH,
     vx: 0, vy: 0, vz: 0
-  } as Player;
+  };
   jumpQueued = false;
+  isGrounded = false;
+  lastTime = 0;
 
   (window as any).__DOM3D_ACTIVE__ = false;
 }
