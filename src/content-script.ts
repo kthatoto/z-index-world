@@ -68,6 +68,10 @@ let planeProxies: Map<number, HTMLDivElement[]> = new Map();
 const BUCKET_SIZE = 3;
 const DEPTH_STEP = 40;
 
+// Store original styles for cleanup
+let modifiedElements: { el: HTMLElement; originalTransform: string }[] = [];
+let originalBodyTransformStyle = '';
+
 let boxes: Box[] = [];
 let grid: Map<string, Box[]> = new Map();
 let startBox: Box | null = null;
@@ -168,9 +172,19 @@ function normalizeZ(rawZ: number): number {
   return Math.max(-Z_MAX, Math.min(Z_MAX, rawZ));
 }
 
+function restoreModifiedElements() {
+  for (const { el, originalTransform } of modifiedElements) {
+    el.style.transform = originalTransform;
+  }
+  modifiedElements = [];
+}
+
 function scanDOM(initPlayer: boolean = false) {
   const vw = window.innerWidth;
   const vh = window.innerHeight;
+
+  // Restore previously modified elements before rescanning
+  restoreModifiedElements();
 
   boxes = [];
 
@@ -178,6 +192,7 @@ function scanDOM(initPlayer: boolean = false) {
     if (EXCLUDED_TAGS.has(el.tagName)) continue;
     if ((el as HTMLElement).id?.startsWith('dom3d-')) continue;
 
+    const htmlEl = el as HTMLElement;
     const style = getComputedStyle(el);
     if (style.display === 'none' || style.visibility === 'hidden') continue;
 
@@ -199,7 +214,18 @@ function scanDOM(initPlayer: boolean = false) {
 
     const z = normalizeZ(Math.max(0, zIndex));
 
-    // No DOM modification - just collect box data for physics and proxy visualization
+    // Apply translateZ to make element float at its z-index height
+    const originalInlineTransform = htmlEl.style.transform;
+    const computedTransform = style.transform;
+    modifiedElements.push({ el: htmlEl, originalTransform: originalInlineTransform });
+
+    // Preserve existing transform (from CSS or inline) when adding translateZ
+    if (computedTransform && computedTransform !== 'none' && !computedTransform.includes('translateZ')) {
+      htmlEl.style.transform = `${computedTransform} translateZ(${z}px)`;
+    } else if (!computedTransform || computedTransform === 'none') {
+      htmlEl.style.transform = `translateZ(${z}px)`;
+    }
+
     boxes.push({
       x: rect.left,
       y: rect.top,
@@ -990,6 +1016,10 @@ function init() {
   if (running) return;
   if (document.getElementById('dom3d-root')) return;
 
+  // Store original body transformStyle and enable 3D context
+  originalBodyTransformStyle = document.body.style.transformStyle;
+  document.body.style.transformStyle = 'preserve-3d';
+
   createOverlay();
   createZPlanesContainer();
   scanDOM(true);  // scan with player initialization (also builds Z planes)
@@ -1030,6 +1060,10 @@ function cleanup() {
 
   // Cleanup Z planes system
   cleanupZPlanes();
+
+  // Restore modified elements
+  restoreModifiedElements();
+  document.body.style.transformStyle = originalBodyTransformStyle;
 
   root?.remove();
   playerEl?.remove();  // Player is in body, not root
