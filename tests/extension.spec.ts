@@ -90,7 +90,7 @@ test.describe('z-index-world extension', () => {
     console.log('Overlay test passed!');
   });
 
-  test('player uses translate3d with Z component', async () => {
+  test('player uses translate and z-index for positioning', async () => {
     const page = await context.newPage();
     await page.goto('https://example.com');
     await page.waitForLoadState('domcontentloaded');
@@ -99,28 +99,35 @@ test.describe('z-index-world extension', () => {
     await injectContentScript(page);
     await page.waitForTimeout(500);
 
-    // Check player transform uses translate3d
-    const playerTransform = await page.evaluate(() => {
+    // Check player transform uses translate and has z-index
+    const playerStyle = await page.evaluate(() => {
       const el = document.getElementById('dom3d-player');
       if (!el) return null;
-      return el.style.transform;
+      return {
+        transform: el.style.transform,
+        zIndex: el.style.zIndex
+      };
     });
 
-    expect(playerTransform).toBeTruthy();
-    expect(playerTransform).toContain('translate3d');
+    expect(playerStyle).toBeTruthy();
+    expect(playerStyle?.transform).toContain('translate');
 
-    // Parse the transform to verify Z component exists
-    const match = playerTransform?.match(/translate3d\(([^,]+)px,\s*([^,]+)px,\s*([^)]+)px\)/);
+    // Parse the transform to verify X, Y components exist
+    const match = playerStyle?.transform.match(/translate\(([^,]+)px,\s*([^)]+)px\)/);
     expect(match).toBeTruthy();
     if (match) {
-      const z = parseFloat(match[3]);
-      expect(typeof z).toBe('number');
-      expect(isNaN(z)).toBe(false);
-      console.log('Player transform:', playerTransform);
-      console.log('Z value:', z);
+      const x = parseFloat(match[1]);
+      const y = parseFloat(match[2]);
+      const z = parseInt(playerStyle?.zIndex || '0', 10);
+      expect(typeof x).toBe('number');
+      expect(typeof y).toBe('number');
+      expect(isNaN(x)).toBe(false);
+      expect(isNaN(y)).toBe(false);
+      console.log('Player transform:', playerStyle?.transform);
+      console.log('Z value (z-index):', z);
     }
 
-    console.log('translate3d test passed!');
+    console.log('translate test passed!');
   });
 
   test('player moves with vim keys', async () => {
@@ -132,18 +139,18 @@ test.describe('z-index-world extension', () => {
     await injectContentScript(page);
     await page.waitForTimeout(500);
 
-    // Get position from translate3d transform
+    // Get position from translate transform and z-index
     const getPlayerPos = async () => {
       return await page.evaluate(() => {
         const el = document.getElementById('dom3d-player');
         if (!el) return null;
         const transform = el.style.transform;
-        const match = transform.match(/translate3d\(([^,]+)px,\s*([^,]+)px,\s*([^)]+)px\)/);
+        const match = transform.match(/translate\(([^,]+)px,\s*([^)]+)px\)/);
         if (!match) return null;
         return {
           x: parseFloat(match[1]),
           y: parseFloat(match[2]),
-          z: parseFloat(match[3]),
+          z: parseInt(el.style.zIndex || '0', 10),
         };
       });
     };
@@ -191,7 +198,7 @@ test.describe('z-index-world extension', () => {
     console.log('Movement tests passed!');
   });
 
-  test('jump changes Z value in translate3d', async () => {
+  test('jump changes z-index value', async () => {
     const page = await context.newPage();
     await page.goto('https://example.com');
     await page.waitForLoadState('domcontentloaded');
@@ -200,15 +207,12 @@ test.describe('z-index-world extension', () => {
     await injectContentScript(page);
     await page.waitForTimeout(500);
 
-    // Get Z from translate3d transform
+    // Get Z from z-index style
     const getPlayerZ = async () => {
       return await page.evaluate(() => {
         const el = document.getElementById('dom3d-player');
         if (!el) return null;
-        const transform = el.style.transform;
-        const match = transform.match(/translate3d\([^,]+px,\s*[^,]+px,\s*([^)]+)px\)/);
-        if (!match) return null;
-        return parseFloat(match[1]);
+        return parseInt(el.style.zIndex || '0', 10);
       });
     };
 
@@ -287,7 +291,7 @@ test.describe('z-index-world extension', () => {
     console.log('Markers test passed!');
   });
 
-  test('debug display shows transform value', async () => {
+  test('debug display shows z-index info', async () => {
     const page = await context.newPage();
     await page.goto('https://example.com');
     await page.waitForLoadState('domcontentloaded');
@@ -296,14 +300,14 @@ test.describe('z-index-world extension', () => {
     await injectContentScript(page);
     await page.waitForTimeout(500);
 
-    // Check debug display contains transform info
+    // Check debug display contains z-index info
     const debugContent = await page.evaluate(() => {
       const debug = document.getElementById('dom3d-debug');
       return debug?.innerHTML ?? '';
     });
 
-    expect(debugContent).toContain('translate3d');
-    expect(debugContent).toContain('transform:');
+    expect(debugContent).toContain('z-index');
+    expect(debugContent).toContain('Z:');
 
     console.log('Debug display test passed!');
   });

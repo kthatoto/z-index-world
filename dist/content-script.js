@@ -503,20 +503,21 @@ function restartGame() {
     }
 }
 // ============================================================================
-// Render - Using translate3d for X, Y, Z positioning
+// Render - Using translate for X, Y and z-index for stacking
 // ============================================================================
 function render() {
     if (!playerEl)
         return;
     // Check if player reached goal
     checkGoal();
-    // Use translate3d for positioning - Z is now properly reflected in CSS!
-    // Shadow based on height above ground (not absolute Z)
+    // Shadow based on height above ground
     const heightAboveGround = Math.max(0, player.z - groundZ);
     const shadowBlur = heightAboveGround / 5;
     const shadowOffset = heightAboveGround / 10;
-    currentTransform = `translate3d(${player.x.toFixed(1)}px, ${player.y.toFixed(1)}px, ${player.z.toFixed(1)}px)`;
+    // Use translate for X, Y positioning, z-index for stacking order
+    currentTransform = `translate(${player.x.toFixed(1)}px, ${player.y.toFixed(1)}px)`;
     playerEl.style.transform = currentTransform;
+    playerEl.style.zIndex = String(Math.floor(player.z));
     playerEl.style.boxShadow = `${shadowOffset}px ${shadowOffset}px ${shadowBlur}px rgba(0,0,0,0.4)`;
     // Occlusion: check if player is under any box (hidden by objects above)
     const nearby = queryNearby(player);
@@ -539,13 +540,10 @@ function render() {
       <div style="margin-bottom: 4px; color: #fff; font-weight: bold;">z-index-world</div>
       <div>X: <span style="color: #f66">${player.x.toFixed(0)}</span></div>
       <div>Y: <span style="color: #6f6">${player.y.toFixed(0)}</span></div>
-      <div>Z: <span style="color: #66f">${player.z.toFixed(0)}</span></div>
+      <div>Z: <span style="color: #66f">${player.z.toFixed(0)}</span> (z-index)</div>
       <div>vZ: <span style="color: #ff0">${player.vz.toFixed(0)}</span></div>
       <div>groundZ: <span style="color: #f0f">${groundZ.toFixed(0)}</span></div>
       <div>Grounded: <span style="color: ${isGrounded ? '#0f0' : '#f00'}">${isGrounded ? 'Yes' : 'No'}</span></div>
-      <div style="margin-top: 6px; font-size: 9px; color: #aaa; word-break: break-all;">
-        transform:<br><span style="color: #0ff">${currentTransform}</span>
-      </div>
       <div style="margin-top: 4px; font-size: 10px; color: #888;">HJKL:Move Space:Jump</div>
     `;
     }
@@ -571,15 +569,13 @@ function createOverlay() {
     document.body.appendChild(root);
 }
 // ============================================================================
-// Create Player (2D div with translate3d positioning)
+// Create Player (positioned in body with dynamic z-index for proper stacking)
 // ============================================================================
 function createPlayer() {
-    if (!root)
-        return;
     playerEl = document.createElement('div');
     playerEl.id = 'dom3d-player';
     playerEl.style.cssText = `
-    position: absolute;
+    position: fixed;
     left: 0;
     top: 0;
     width: ${PLAYER_SIZE}px;
@@ -588,10 +584,11 @@ function createPlayer() {
     border: 2px solid #fff;
     border-radius: 4px;
     box-sizing: border-box;
-    will-change: transform;
-    transform-style: preserve-3d;
+    will-change: transform, z-index;
+    pointer-events: none;
   `;
-    root.appendChild(playerEl);
+    // Append to body directly for proper z-index stacking with page elements
+    document.body.appendChild(playerEl);
     render();
 }
 // ============================================================================
@@ -837,6 +834,7 @@ function cleanup() {
     // Restore modified DOM elements
     restoreModifiedElements();
     root?.remove();
+    playerEl?.remove(); // Player is in body, not root
     debugEl?.remove();
     document.getElementById('dom3d-marker-style')?.remove();
     // Cleanup celebration
