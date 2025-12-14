@@ -265,13 +265,14 @@ function calculateJumpVelocity() {
   // Exclude base floor (last element) from calculation if there are other boxes
   const stageBoxes = boxes.length > 1 ? boxes.slice(0, -1) : boxes;
 
-  if (stageBoxes.length < 2) {
+  if (stageBoxes.length === 0) {
     jumpVz = MIN_JUMP_VZ;
     return;
   }
 
   // Get all platform top heights (z + d), sorted
-  const tops = stageBoxes.map(b => b.z + b.d).sort((a, b) => a - b);
+  // Include ground level (z=0) to calculate jump from floor to first platform
+  const tops = [0, ...stageBoxes.map(b => b.z + b.d)].sort((a, b) => a - b);
 
   // Find max step height between consecutive platforms
   let maxStep = 0;
