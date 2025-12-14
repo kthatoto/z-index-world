@@ -1,11 +1,8 @@
 "use strict";
 // Tab state management
 const tabStates = new Map();
-// Toggle game on/off when extension icon is clicked
-chrome.action.onClicked.addListener(async (tab) => {
-    if (!tab.id)
-        return;
-    const tabId = tab.id;
+// Toggle function shared by icon click and keyboard shortcut
+async function toggleGame(tabId) {
     const isActive = tabStates.get(tabId) ?? false;
     if (isActive) {
         // Turn OFF: Send message to cleanup
@@ -32,6 +29,18 @@ chrome.action.onClicked.addListener(async (tab) => {
         catch (e) {
             console.error('[z-index-world] Failed to inject script:', e);
         }
+    }
+}
+// Toggle game on/off when extension icon is clicked
+chrome.action.onClicked.addListener(async (tab) => {
+    if (!tab.id)
+        return;
+    await toggleGame(tab.id);
+});
+// Listen for toggle message from key-listener
+chrome.runtime.onMessage.addListener((message, sender) => {
+    if (message.action === 'toggle' && sender.tab?.id) {
+        toggleGame(sender.tab.id);
     }
 });
 // Clean up when tab is closed
