@@ -202,19 +202,22 @@ function restoreModifiedElements() {
     modifiedElements = [];
 }
 function pickStartGoal() {
-    // Base floor is always added in scanDOM, so boxes is never empty
     if (boxes.length === 0)
         return;
-    startBox = boxes.reduce((a, b) => a.z < b.z ? a : b);
-    goalBox = boxes.reduce((a, b) => a.z > b.z ? a : b);
+    // Exclude base floor (last element) from selection if there are other boxes
+    const stageBoxes = boxes.length > 1 ? boxes.slice(0, -1) : boxes;
+    startBox = stageBoxes.reduce((a, b) => a.z < b.z ? a : b);
+    goalBox = stageBoxes.reduce((a, b) => a.z > b.z ? a : b);
 }
 function calculateJumpVelocity() {
-    if (boxes.length < 2) {
+    // Exclude base floor (last element) from calculation if there are other boxes
+    const stageBoxes = boxes.length > 1 ? boxes.slice(0, -1) : boxes;
+    if (stageBoxes.length < 2) {
         jumpVz = MIN_JUMP_VZ;
         return;
     }
     // Get all platform top heights (z + d), sorted
-    const tops = boxes.map(b => b.z + b.d).sort((a, b) => a - b);
+    const tops = stageBoxes.map(b => b.z + b.d).sort((a, b) => a - b);
     // Find max step height between consecutive platforms
     let maxStep = 0;
     for (let i = 1; i < tops.length; i++) {
@@ -373,7 +376,13 @@ function physics(dt) {
         }
     }
     groundZ = bestGroundZ;
-    // No virtual floor clamp - floor is determined by Box collision only
+    // Safety clamp: prevent falling below z=0
+    if (player.z < 0) {
+        player.z = 0;
+        player.vz = 0;
+        isGrounded = true;
+        groundZ = 0;
+    }
 }
 // ============================================================================
 // Goal Check & Celebration
