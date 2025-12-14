@@ -1,0 +1,13 @@
+{
+  "manifest_version": 3,
+  "name": "z-index-world",
+  "version": "1.0.0",
+  "description": "Turn any webpage into a 3D platformer stage using z-index as height",
+  "permissions": ["activeTab", "scripting"],
+  "action": {
+    "default_title": "Toggle z-index-world"
+  },
+  "background": {
+    "service_worker": "background.js"
+  }
+}

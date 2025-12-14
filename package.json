@@ -1,0 +1,21 @@
+{
+  "name": "z-index-world",
+  "version": "1.0.0",
+  "description": "任意のWebページを「3D空間のステージ」として解釈し、プレイヤーを動かすChrome拡張。",
+  "main": "index.js",
+  "scripts": {
+    "build": "tsc && cp manifest.json dist/",
+    "test": "npx playwright test",
+    "test:headed": "npx playwright test --headed"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@playwright/test": "^1.57.0",
+    "@types/chrome": "^0.1.32",
+    "@types/node": "^25.0.1",
+    "playwright": "^1.57.0",
+    "typescript": "^5.9.3"
+  }
+}
