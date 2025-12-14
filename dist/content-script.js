@@ -155,13 +155,15 @@ function scanDOM(initPlayer = false) {
             continue;
         const z = normalizeZ(Math.max(0, zIndex));
         // Apply translateZ to make element float at its z-index height
-        // No perspective on body = no visual position shift, only Z offset
-        const originalTransform = htmlEl.style.transform;
-        modifiedElements.push({ el: htmlEl, originalTransform });
-        if (originalTransform && !originalTransform.includes('translateZ')) {
-            htmlEl.style.transform = `${originalTransform} translateZ(${z}px)`;
+        // Use computed transform to preserve CSS-defined transforms (like translateX(-50%))
+        const originalInlineTransform = htmlEl.style.transform;
+        const computedTransform = style.transform;
+        modifiedElements.push({ el: htmlEl, originalTransform: originalInlineTransform });
+        // Preserve existing transform (from CSS or inline) when adding translateZ
+        if (computedTransform && computedTransform !== 'none' && !computedTransform.includes('translateZ')) {
+            htmlEl.style.transform = `${computedTransform} translateZ(${z}px)`;
         }
-        else if (!originalTransform) {
+        else if (!computedTransform || computedTransform === 'none') {
             htmlEl.style.transform = `translateZ(${z}px)`;
         }
         boxes.push({
