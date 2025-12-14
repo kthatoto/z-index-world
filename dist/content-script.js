@@ -341,6 +341,20 @@ function render() {
     currentTransform = `translate3d(${player.x.toFixed(1)}px, ${player.y.toFixed(1)}px, ${player.z.toFixed(1)}px)`;
     playerEl.style.transform = currentTransform;
     playerEl.style.boxShadow = `${shadowOffset}px ${shadowOffset}px ${shadowBlur}px rgba(0,0,0,0.4)`;
+    // Occlusion: check if player is under any box (hidden by objects above)
+    const nearby = queryNearby(player);
+    let isOccluded = false;
+    for (const box of nearby) {
+        // If player overlaps in XY and player's top is below box's bottom (player is under)
+        if (overlapX(player, box) && overlapY(player, box)) {
+            if (player.z + player.d < box.z) {
+                // Player is completely under this box
+                isOccluded = true;
+                break;
+            }
+        }
+    }
+    playerEl.style.opacity = isOccluded ? '0.2' : '1';
     // Debug walls are rebuilt after scanDOM, not every frame
     // Update debug display
     if (debugEl) {
