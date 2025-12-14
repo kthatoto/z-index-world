@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>z-index-world - Stage Select</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      min-height: 100vh;
+      background: linear-gradient(135deg, #0f0c29 0%, #302b63 50%, #24243e 100%);
+      font-family: 'Segoe UI', sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 40px 20px;
+    }
+    h1 {
+      color: #fff;
+      font-size: 48px;
+      margin-bottom: 10px;
+      text-shadow: 0 0 20px rgba(155, 89, 182, 0.5);
+    }
+    .subtitle {
+      color: rgba(255,255,255,0.6);
+      margin-bottom: 40px;
+    }
+    .stage-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 24px;
+      max-width: 1200px;
+      width: 100%;
+    }
+    .category {
+      margin-bottom: 40px;
+      width: 100%;
+    }
+    .category h2 {
+      color: #f1c40f;
+      font-size: 24px;
+      margin-bottom: 20px;
+      padding-left: 10px;
+      border-left: 4px solid #f1c40f;
+    }
+    .stage-card {
+      background: rgba(255,255,255,0.1);
+      border-radius: 16px;
+      padding: 24px;
+      text-decoration: none;
+      color: #fff;
+      transition: all 0.3s ease;
+      border: 2px solid transparent;
+    }
+    .stage-card:hover {
+      background: rgba(255,255,255,0.15);
+      border-color: #9b59b6;
+      transform: translateY(-4px);
+      box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+    }
+    .stage-card h3 {
+      font-size: 20px;
+      margin-bottom: 8px;
+    }
+    .stage-card p {
+      color: rgba(255,255,255,0.7);
+      font-size: 14px;
+      line-height: 1.5;
+    }
+    .stage-card .difficulty {
+      margin-top: 12px;
+      font-size: 12px;
+    }
+    .difficulty .star { color: #f1c40f; }
+    .difficulty .star-empty { color: rgba(255,255,255,0.3); }
+    .instructions {
+      margin-top: 40px;
+      padding: 20px;
+      background: rgba(0,0,0,0.3);
+      border-radius: 12px;
+      color: rgba(255,255,255,0.8);
+      max-width: 600px;
+      text-align: center;
+    }
+    .instructions h3 {
+      margin-bottom: 10px;
+      color: #fff;
+    }
+    .instructions code {
+      background: rgba(255,255,255,0.1);
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-family: monospace;
+    }
+  </style>
+</head>
+<body>
+  <h1>🎮 z-index-world</h1>
+  <p class="subtitle">Turn any webpage into a 3D platformer!</p>
+
+  <div class="category">
+    <h2>Tutorial</h2>
+    <div class="stage-grid">
+      <a href="tutorial/basic.html" class="stage-card">
+        <h3>📚 Basic Controls</h3>
+        <p>Learn the basic movement and jump mechanics.</p>
+        <div class="difficulty">
+          <span class="star">★</span>
+          <span class="star-empty">★</span>
+          <span class="star-empty">★</span>
+        </div>
+      </a>
+    </div>
+  </div>
+
+  <div class="category">
+    <h2>Easy</h2>
+    <div class="stage-grid">
+      <a href="easy/stairs.html" class="stage-card">
+        <h3>🪜 Stairs</h3>
+        <p>Simple staircase to climb. Good for beginners!</p>
+        <div class="difficulty">
+          <span class="star">★</span>
+          <span class="star-empty">★</span>
+          <span class="star-empty">★</span>
+        </div>
+      </a>
+      <a href="easy/platforms.html" class="stage-card">
+        <h3>🟦 Platforms</h3>
+        <p>Jump between floating platforms.</p>
+        <div class="difficulty">
+          <span class="star">★</span>
+          <span class="star">★</span>
+          <span class="star-empty">★</span>
+        </div>
+      </a>
+    </div>
+  </div>
+
+  <div class="category">
+    <h2>Normal</h2>
+    <div class="stage-grid">
+      <a href="normal/tower.html" class="stage-card">
+        <h3>🗼 Tower</h3>
+        <p>Climb the multi-layered tower to the top.</p>
+        <div class="difficulty">
+          <span class="star">★</span>
+          <span class="star">★</span>
+          <span class="star-empty">★</span>
+        </div>
+      </a>
+      <a href="normal/zigzag.html" class="stage-card">
+        <h3>⚡ Zigzag</h3>
+        <p>Navigate the zigzag path upward.</p>
+        <div class="difficulty">
+          <span class="star">★</span>
+          <span class="star">★</span>
+          <span class="star">★</span>
+        </div>
+      </a>
+    </div>
+  </div>
+
+  <div class="category">
+    <h2>Hard</h2>
+    <div class="stage-grid">
+      <a href="hard/maze.html" class="stage-card">
+        <h3>🌀 Maze</h3>
+        <p>Find your way through walls of different heights.</p>
+        <div class="difficulty">
+          <span class="star">★</span>
+          <span class="star">★</span>
+          <span class="star">★</span>
+        </div>
+      </a>
+      <a href="hard/spiral.html" class="stage-card">
+        <h3>🌪️ Spiral</h3>
+        <p>Ascend the spiral tower. Don't fall!</p>
+        <div class="difficulty">
+          <span class="star">★</span>
+          <span class="star">★</span>
+          <span class="star">★</span>
+        </div>
+      </a>
+    </div>
+  </div>
+
+  <div class="instructions">
+    <h3>How to Play</h3>
+    <p>
+      1. Install the z-index-world Chrome extension<br>
+      2. Open any stage and click the extension icon<br>
+      3. Use <code>h/j/k/l</code> to move, <code>Space</code> to jump<br>
+      4. Reach the golden goal!
+    </p>
+  </div>
+</body>
+</html>

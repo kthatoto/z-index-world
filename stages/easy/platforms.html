@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Easy - Platforms</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      min-height: 100vh;
+      background: linear-gradient(180deg, #0c0c1e 0%, #1a1a3e 100%);
+      font-family: 'Segoe UI', sans-serif;
+      overflow: hidden;
+    }
+    h1 {
+      position: absolute;
+      top: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      color: #fff;
+      font-size: 24px;
+      z-index: 1;
+    }
+    .platform {
+      position: absolute;
+      border-radius: 12px;
+    }
+    /* 浮遊プラットフォーム */
+    .p1 { left: 100px; top: 400px; width: 120px; height: 30px; background: #e74c3c; z-index: 50; }
+    .p2 { left: 280px; top: 350px; width: 100px; height: 30px; background: #e67e22; z-index: 100; }
+    .p3 { left: 440px; top: 300px; width: 100px; height: 30px; background: #f1c40f; z-index: 150; }
+    .p4 { left: 320px; top: 230px; width: 100px; height: 30px; background: #2ecc71; z-index: 200; }
+    .p5 { left: 500px; top: 180px; width: 100px; height: 30px; background: #3498db; z-index: 250; }
+    .p6 { left: 680px; top: 250px; width: 100px; height: 30px; background: #9b59b6; z-index: 300; }
+    .p7 { left: 800px; top: 180px; width: 100px; height: 30px; background: #1abc9c; z-index: 350; }
+    .goal {
+      left: 900px; top: 100px;
+      width: 120px; height: 50px;
+      background: linear-gradient(45deg, #f1c40f, #f39c12);
+      z-index: 400;
+      box-shadow: 0 0 30px rgba(241, 196, 15, 0.5);
+    }
+    .back-link {
+      position: absolute;
+      top: 20px;
+      left: 20px;
+      color: #fff;
+      text-decoration: none;
+      z-index: 1;
+    }
+  </style>
+</head>
+<body>
+  <a href="../index.html" class="back-link">← Back</a>
+  <h1>🟦 Platforms</h1>
+  <div class="platform p1"></div>
+  <div class="platform p2"></div>
+  <div class="platform p3"></div>
+  <div class="platform p4"></div>
+  <div class="platform p5"></div>
+  <div class="platform p6"></div>
+  <div class="platform p7"></div>
+  <div class="platform goal"></div>
+</body>
+</html>

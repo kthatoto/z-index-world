@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Hard - Spiral</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      min-height: 100vh;
+      background: radial-gradient(ellipse at center, #1a1a2e 0%, #0f0f1a 100%);
+      font-family: 'Segoe UI', sans-serif;
+      overflow: hidden;
+    }
+    h1 {
+      position: absolute;
+      top: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      color: #fff;
+      font-size: 24px;
+      z-index: 1;
+    }
+    .platform {
+      position: absolute;
+      border-radius: 50%;
+    }
+    /* スパイラルタワー - 中心から外側へ螺旋状に */
+    .center { left: 50%; top: 50%; transform: translate(-50%, -50%); }
+
+    .s1 { left: 500px; top: 450px; width: 80px; height: 80px; background: #e74c3c; z-index: 50; }
+    .s2 { left: 580px; top: 400px; width: 70px; height: 70px; background: #e67e22; z-index: 100; }
+    .s3 { left: 620px; top: 320px; width: 70px; height: 70px; background: #f39c12; z-index: 150; }
+    .s4 { left: 580px; top: 240px; width: 70px; height: 70px; background: #f1c40f; z-index: 200; }
+    .s5 { left: 500px; top: 200px; width: 70px; height: 70px; background: #2ecc71; z-index: 250; }
+    .s6 { left: 420px; top: 240px; width: 70px; height: 70px; background: #27ae60; z-index: 300; }
+    .s7 { left: 380px; top: 320px; width: 70px; height: 70px; background: #1abc9c; z-index: 350; }
+    .s8 { left: 420px; top: 400px; width: 70px; height: 70px; background: #3498db; z-index: 400; }
+    .s9 { left: 500px; top: 350px; width: 60px; height: 60px; background: #2980b9; z-index: 450; }
+    .goal {
+      left: 500px; top: 280px;
+      width: 80px; height: 80px;
+      background: linear-gradient(45deg, #9b59b6, #8e44ad);
+      z-index: 500;
+      box-shadow: 0 0 40px rgba(155, 89, 182, 0.6);
+    }
+    .back-link { position: absolute; top: 20px; left: 20px; color: #fff; text-decoration: none; z-index: 1; }
+    .hint {
+      position: absolute;
+      bottom: 30px;
+      left: 50%;
+      transform: translateX(-50%);
+      color: rgba(255,255,255,0.5);
+      font-size: 14px;
+      z-index: 1;
+    }
+  </style>
+</head>
+<body>
+  <a href="../index.html" class="back-link">← Back</a>
+  <h1>🌪️ Spiral</h1>
+  <div class="platform s1"></div>
+  <div class="platform s2"></div>
+  <div class="platform s3"></div>
+  <div class="platform s4"></div>
+  <div class="platform s5"></div>
+  <div class="platform s6"></div>
+  <div class="platform s7"></div>
+  <div class="platform s8"></div>
+  <div class="platform s9"></div>
+  <div class="platform goal"></div>
+  <p class="hint">Ascend the spiral to the center!</p>
+</body>
+</html>

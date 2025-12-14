@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tutorial - Basic Controls</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      min-height: 100vh;
+      background: linear-gradient(180deg, #2c3e50 0%, #1a252f 100%);
+      font-family: 'Segoe UI', sans-serif;
+    }
+    .header {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      padding: 20px;
+      background: rgba(0,0,0,0.5);
+      color: #fff;
+      z-index: 1;
+    }
+    .header h1 { font-size: 24px; }
+    .header p { color: rgba(255,255,255,0.7); font-size: 14px; margin-top: 5px; }
+
+    .platform {
+      position: absolute;
+      border-radius: 8px;
+    }
+
+    /* チュートリアルエリア */
+    .ground {
+      left: 50px; bottom: 50px;
+      width: 300px; height: 50px;
+      background: #27ae60;
+      z-index: 10;
+    }
+    .hint-1 {
+      left: 80px; bottom: 120px;
+      width: 200px; height: 30px;
+      background: rgba(46, 204, 113, 0.3);
+      border: 2px dashed #2ecc71;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #2ecc71;
+      font-size: 12px;
+      z-index: 5;
+    }
+    .step-up {
+      left: 400px; bottom: 50px;
+      width: 150px; height: 50px;
+      background: #3498db;
+      z-index: 100;
+    }
+    .hint-2 {
+      left: 420px; bottom: 120px;
+      width: 120px; height: 30px;
+      background: rgba(52, 152, 219, 0.3);
+      border: 2px dashed #3498db;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #3498db;
+      font-size: 12px;
+      z-index: 5;
+    }
+    .higher-step {
+      left: 600px; bottom: 50px;
+      width: 150px; height: 50px;
+      background: #9b59b6;
+      z-index: 200;
+    }
+    .goal {
+      left: 800px; bottom: 50px;
+      width: 150px; height: 60px;
+      background: linear-gradient(45deg, #f1c40f, #f39c12);
+      z-index: 300;
+      box-shadow: 0 0 30px rgba(241, 196, 15, 0.5);
+    }
+
+    .controls {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      background: rgba(0,0,0,0.7);
+      padding: 20px;
+      border-radius: 12px;
+      color: #fff;
+      font-size: 14px;
+      z-index: 1;
+    }
+    .controls kbd {
+      background: #34495e;
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-family: monospace;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>📚 Tutorial: Basic Controls</h1>
+    <p>Learn to move and jump!</p>
+  </div>
+
+  <div class="platform ground"></div>
+  <div class="platform hint-1">← Start here</div>
+  <div class="platform step-up"></div>
+  <div class="platform hint-2">Jump! (Space)</div>
+  <div class="platform higher-step"></div>
+  <div class="platform goal"></div>
+
+  <div class="controls">
+    <strong>Controls:</strong><br><br>
+    <kbd>h</kbd> Move left<br>
+    <kbd>l</kbd> Move right<br>
+    <kbd>k</kbd> Move up<br>
+    <kbd>j</kbd> Move down<br>
+    <kbd>Space</kbd> Jump (Z direction)
+  </div>
+</body>
+</html>

@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Hard - Maze</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      min-height: 100vh;
+      background: #1a1a1a;
+      font-family: 'Segoe UI', sans-serif;
+      overflow: hidden;
+    }
+    h1 {
+      position: absolute;
+      top: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      color: #fff;
+      font-size: 24px;
+      z-index: 1;
+    }
+    .wall {
+      position: absolute;
+      background: #2c3e50;
+      border: 2px solid #34495e;
+    }
+    .wall-low { z-index: 50; background: #27ae60; }
+    .wall-mid { z-index: 200; background: #f39c12; }
+    .wall-high { z-index: 400; background: #e74c3c; }
+    .outer-top { left: 50px; top: 100px; width: 900px; height: 20px; }
+    .outer-bottom { left: 50px; top: 500px; width: 900px; height: 20px; }
+    .outer-left { left: 50px; top: 100px; width: 20px; height: 420px; }
+    .outer-right { left: 930px; top: 100px; width: 20px; height: 420px; }
+    .maze-1 { left: 150px; top: 100px; width: 20px; height: 150px; }
+    .maze-2 { left: 150px; top: 250px; width: 200px; height: 20px; }
+    .maze-3 { left: 330px; top: 150px; width: 20px; height: 120px; }
+    .maze-4 { left: 250px; top: 350px; width: 20px; height: 170px; }
+    .maze-5 { left: 400px; top: 200px; width: 150px; height: 20px; }
+    .maze-6 { left: 530px; top: 100px; width: 20px; height: 200px; }
+    .maze-7 { left: 400px; top: 350px; width: 200px; height: 20px; }
+    .maze-8 { left: 580px; top: 280px; width: 20px; height: 150px; }
+    .maze-9 { left: 650px; top: 150px; width: 20px; height: 200px; }
+    .maze-10 { left: 700px; top: 300px; width: 150px; height: 20px; }
+    .maze-11 { left: 750px; top: 180px; width: 100px; height: 20px; }
+    .maze-12 { left: 830px; top: 180px; width: 20px; height: 200px; }
+    .start-zone { left: 80px; top: 450px; width: 80px; height: 40px; background: #2ecc71; z-index: 10; position: absolute; border-radius: 8px; }
+    .goal-zone {
+      left: 850px; top: 130px;
+      width: 60px; height: 60px;
+      background: linear-gradient(45deg, #f1c40f, #f39c12);
+      z-index: 500;
+      box-shadow: 0 0 20px rgba(241, 196, 15, 0.5);
+      position: absolute;
+      border-radius: 8px;
+    }
+    .back-link { position: absolute; top: 20px; left: 20px; color: #fff; text-decoration: none; z-index: 1; }
+    .legend {
+      position: absolute;
+      top: 60px;
+      right: 20px;
+      color: #fff;
+      font-size: 12px;
+      z-index: 1;
+    }
+  </style>
+</head>
+<body>
+  <a href="../index.html" class="back-link">← Back</a>
+  <h1>🌀 Maze</h1>
+  <div class="wall wall-high outer-top"></div>
+  <div class="wall wall-high outer-bottom"></div>
+  <div class="wall wall-high outer-left"></div>
+  <div class="wall wall-high outer-right"></div>
+  <div class="wall wall-low maze-1"></div>
+  <div class="wall wall-mid maze-2"></div>
+  <div class="wall wall-high maze-3"></div>
+  <div class="wall wall-low maze-4"></div>
+  <div class="wall wall-mid maze-5"></div>
+  <div class="wall wall-high maze-6"></div>
+  <div class="wall wall-low maze-7"></div>
+  <div class="wall wall-mid maze-8"></div>
+  <div class="wall wall-high maze-9"></div>
+  <div class="wall wall-low maze-10"></div>
+  <div class="wall wall-mid maze-11"></div>
+  <div class="wall wall-high maze-12"></div>
+  <div class="start-zone"></div>
+  <div class="goal-zone"></div>
+  <div class="legend">
+    Wall Heights:<br>
+    <span style="color:#27ae60">■</span> Low (jumpable)<br>
+    <span style="color:#f39c12">■</span> Medium<br>
+    <span style="color:#e74c3c">■</span> High
+  </div>
+</body>
+</html>

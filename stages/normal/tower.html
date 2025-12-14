@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Normal - Tower</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      min-height: 100vh;
+      background: linear-gradient(180deg, #0f0c29 0%, #302b63 50%, #24243e 100%);
+      font-family: 'Segoe UI', sans-serif;
+      overflow: hidden;
+    }
+    h1 {
+      position: absolute;
+      top: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      color: #fff;
+      font-size: 24px;
+      z-index: 1;
+    }
+    .platform {
+      position: absolute;
+      border-radius: 4px;
+    }
+    .tower-base { left: 50%; transform: translateX(-50%); bottom: 30px; width: 400px; height: 50px; background: #34495e; z-index: 10; }
+    .tower-1 { left: 50%; transform: translateX(-50%); bottom: 100px; width: 320px; height: 40px; background: #e74c3c; z-index: 100; }
+    .tower-2 { left: 50%; transform: translateX(-50%); bottom: 160px; width: 250px; height: 40px; background: #e67e22; z-index: 200; }
+    .tower-3 { left: 50%; transform: translateX(-50%); bottom: 220px; width: 180px; height: 40px; background: #f1c40f; z-index: 300; }
+    .tower-4 { left: 50%; transform: translateX(-50%); bottom: 280px; width: 120px; height: 40px; background: #2ecc71; z-index: 400; }
+    .tower-top {
+      left: 50%; transform: translateX(-50%);
+      bottom: 340px;
+      width: 80px; height: 50px;
+      background: linear-gradient(45deg, #9b59b6, #8e44ad);
+      z-index: 500;
+      border-radius: 8px;
+      box-shadow: 0 0 30px rgba(155, 89, 182, 0.5);
+    }
+    .scaffold-left { left: 100px; bottom: 150px; width: 120px; height: 30px; background: #7f8c8d; z-index: 150; }
+    .scaffold-right { right: 100px; bottom: 150px; width: 120px; height: 30px; background: #7f8c8d; z-index: 150; }
+    .back-link { position: absolute; top: 20px; left: 20px; color: #fff; text-decoration: none; z-index: 1; }
+  </style>
+</head>
+<body>
+  <a href="../index.html" class="back-link">← Back</a>
+  <h1>🗼 Tower</h1>
+  <div class="platform tower-base"></div>
+  <div class="platform tower-1"></div>
+  <div class="platform tower-2"></div>
+  <div class="platform tower-3"></div>
+  <div class="platform tower-4"></div>
+  <div class="platform tower-top"></div>
+  <div class="platform scaffold-left"></div>
+  <div class="platform scaffold-right"></div>
+</body>
+</html>

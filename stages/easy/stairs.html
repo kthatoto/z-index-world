@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Easy - Stairs</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      min-height: 100vh;
+      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+      font-family: 'Segoe UI', sans-serif;
+      overflow: hidden;
+    }
+    h1 {
+      position: absolute;
+      top: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      color: #fff;
+      font-size: 24px;
+      z-index: 1;
+    }
+    .platform {
+      position: absolute;
+      border-radius: 8px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+    }
+    .step-1 { left: 50px; bottom: 50px; width: 150px; height: 40px; background: #e94560; z-index: 10; }
+    .step-2 { left: 220px; bottom: 50px; width: 150px; height: 40px; background: #f39c12; z-index: 100; }
+    .step-3 { left: 390px; bottom: 50px; width: 150px; height: 40px; background: #2ecc71; z-index: 200; }
+    .step-4 { left: 560px; bottom: 50px; width: 150px; height: 40px; background: #3498db; z-index: 300; }
+    .step-5 { left: 730px; bottom: 50px; width: 150px; height: 40px; background: #9b59b6; z-index: 400; }
+    .goal-platform {
+      left: 900px; bottom: 50px;
+      width: 200px; height: 60px;
+      background: linear-gradient(45deg, #f1c40f, #f39c12);
+      z-index: 500;
+    }
+    .back-link {
+      position: absolute;
+      top: 20px;
+      left: 20px;
+      color: #fff;
+      text-decoration: none;
+      z-index: 1;
+    }
+    .back-link:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <a href="../index.html" class="back-link">← Back to stages</a>
+  <h1>🪜 Stairs</h1>
+  <div class="platform step-1"></div>
+  <div class="platform step-2"></div>
+  <div class="platform step-3"></div>
+  <div class="platform step-4"></div>
+  <div class="platform step-5"></div>
+  <div class="platform goal-platform"></div>
+</body>
+</html>

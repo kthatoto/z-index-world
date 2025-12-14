@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Normal - Zigzag</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      min-height: 100vh;
+      background: linear-gradient(135deg, #141e30 0%, #243b55 100%);
+      font-family: 'Segoe UI', sans-serif;
+      overflow: hidden;
+    }
+    h1 {
+      position: absolute;
+      top: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      color: #fff;
+      font-size: 24px;
+      z-index: 1;
+    }
+    .platform {
+      position: absolute;
+      border-radius: 6px;
+    }
+    /* ジグザグパス */
+    .z1 { left: 50px; bottom: 80px; width: 200px; height: 35px; background: #e74c3c; z-index: 50; }
+    .z2 { left: 300px; bottom: 80px; width: 200px; height: 35px; background: #c0392b; z-index: 100; }
+    .z3 { left: 150px; bottom: 80px; width: 200px; height: 35px; background: #e67e22; z-index: 150; }
+    .z4 { left: 400px; bottom: 80px; width: 200px; height: 35px; background: #d35400; z-index: 200; }
+    .z5 { left: 250px; bottom: 80px; width: 200px; height: 35px; background: #f39c12; z-index: 250; }
+    .z6 { left: 500px; bottom: 80px; width: 200px; height: 35px; background: #f1c40f; z-index: 300; }
+    .z7 { left: 350px; bottom: 80px; width: 200px; height: 35px; background: #2ecc71; z-index: 350; }
+    .z8 { left: 600px; bottom: 80px; width: 200px; height: 35px; background: #27ae60; z-index: 400; }
+    .z9 { left: 450px; bottom: 80px; width: 200px; height: 35px; background: #3498db; z-index: 450; }
+    .goal {
+      left: 700px; bottom: 80px;
+      width: 180px; height: 50px;
+      background: linear-gradient(45deg, #9b59b6, #8e44ad);
+      z-index: 500;
+      box-shadow: 0 0 30px rgba(155, 89, 182, 0.5);
+    }
+    .back-link { position: absolute; top: 20px; left: 20px; color: #fff; text-decoration: none; z-index: 1; }
+  </style>
+</head>
+<body>
+  <a href="../index.html" class="back-link">← Back</a>
+  <h1>⚡ Zigzag</h1>
+  <div class="platform z1"></div>
+  <div class="platform z2"></div>
+  <div class="platform z3"></div>
+  <div class="platform z4"></div>
+  <div class="platform z5"></div>
+  <div class="platform z6"></div>
+  <div class="platform z7"></div>
+  <div class="platform z8"></div>
+  <div class="platform z9"></div>
+  <div class="platform goal"></div>
+</body>
+</html>
