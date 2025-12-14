@@ -169,18 +169,26 @@ function scanDOM(initPlayer: boolean = false) {
     const style = getComputedStyle(el);
     if (style.display === 'none' || style.visibility === 'hidden') continue;
 
+    // Skip elements with auto z-index (position: static or no z-index set)
+    // Only include positioned elements with explicit z-index
+    const position = style.position;
+    if (position === 'static') continue;
+
+    const zIndexStr = style.zIndex;
+    if (zIndexStr === 'auto' || zIndexStr === '') continue;
+
+    const zIndex = parseInt(zIndexStr, 10);
+    if (isNaN(zIndex)) continue;  // Skip NaN z-index entirely
+
     const rect = el.getBoundingClientRect();
     if (rect.width < 10 || rect.height < 10) continue;
     if (rect.right < -VIEWPORT_MARGIN || rect.left > vw + VIEWPORT_MARGIN) continue;
     if (rect.bottom < -VIEWPORT_MARGIN || rect.top > vh + VIEWPORT_MARGIN) continue;
 
-    let zIndex = parseInt(style.zIndex, 10);
-    if (isNaN(zIndex) || zIndex < 0) zIndex = 0;
-
     boxes.push({
       x: rect.left,
       y: rect.top,
-      z: normalizeZ(zIndex),
+      z: normalizeZ(Math.max(0, zIndex)),
       w: rect.width,
       h: rect.height,
       d: BOX_D
@@ -196,7 +204,20 @@ function scanDOM(initPlayer: boolean = false) {
 }
 
 function pickStartGoal() {
-  if (boxes.length === 0) return;
+  // If no boxes found, create a virtual ground plane that covers everything
+  if (boxes.length === 0) {
+    const groundBox: Box = {
+      x: -1000,
+      y: -1000,
+      z: 0,
+      w: window.innerWidth + 2000,
+      h: window.innerHeight + 2000,
+      d: BOX_D
+    };
+    boxes.push(groundBox);
+    grid = buildGrid(boxes);
+  }
+
   startBox = boxes.reduce((a, b) => a.z < b.z ? a : b);
   goalBox = boxes.reduce((a, b) => a.z > b.z ? a : b);
 }
@@ -382,7 +403,7 @@ function render() {
 
 function createOverlay() {
   root = document.createElement('div');
-  root.id = 'dom3d-game-root';
+  root.id = 'dom3d-root';
   root.style.cssText = `
     position: fixed;
     left: 0;
@@ -527,65 +548,45 @@ function createMarkers() {
 }
 
 // ============================================================================
-// Debug Wall Visualization
+// Debug Wall Visualization (element reuse to prevent leaks)
 // ============================================================================
 
-function createDebugWalls() {
-  if (!root) return;
+const MAX_DEBUG_WALLS = 50;
 
-  // Clear existing debug walls
-  for (const el of debugWallEls) {
-    el.remove();
-  }
-  debugWallEls = [];
-
-  // Create debug visualization for nearby boxes
-  const nearby = queryNearby(player);
-  const maxBoxes = 50; // Limit to prevent performance issues
-
-  for (let i = 0; i < Math.min(nearby.length, maxBoxes); i++) {
-    const box = nearby[i];
-    const el = document.createElement('div');
-    el.className = 'dom3d-debug-wall';
-
-    // Color based on Z height (lower = green, higher = red)
-    const zRatio = Math.min(1, (box.z + box.d) / 500);
-    const r = Math.floor(255 * zRatio);
-    const g = Math.floor(255 * (1 - zRatio));
-    const b = 100;
-
-    el.style.cssText = `
-      position: absolute;
-      left: 0;
-      top: 0;
-      width: ${box.w}px;
-      height: ${box.h}px;
-      background: rgba(${r}, ${g}, ${b}, 0.2);
-      border: 1px solid rgba(${r}, ${g}, ${b}, 0.6);
-      pointer-events: none;
-      will-change: transform;
-      transform: translate3d(${box.x}px, ${box.y}px, ${box.z}px);
-    `;
-
-    root.appendChild(el);
-    debugWallEls.push(el);
-  }
+function createDebugWallElement(): HTMLDivElement {
+  const el = document.createElement('div');
+  el.className = 'dom3d-debug-wall';
+  el.style.cssText = `
+    position: absolute;
+    left: 0;
+    top: 0;
+    pointer-events: none;
+    will-change: transform;
+  `;
+  return el;
 }
 
 function updateDebugWalls() {
   if (!root) return;
 
   const nearby = queryNearby(player);
-  const maxBoxes = 50;
+  const requiredCount = Math.min(nearby.length, MAX_DEBUG_WALLS);
 
-  // If count mismatch, recreate
-  if (debugWallEls.length !== Math.min(nearby.length, maxBoxes)) {
-    createDebugWalls();
-    return;
+  // Add more elements if needed
+  while (debugWallEls.length < requiredCount) {
+    const el = createDebugWallElement();
+    root.appendChild(el);
+    debugWallEls.push(el);
   }
 
-  // Update existing debug walls
-  for (let i = 0; i < debugWallEls.length && i < nearby.length; i++) {
+  // Remove excess elements
+  while (debugWallEls.length > requiredCount) {
+    const el = debugWallEls.pop();
+    el?.remove();
+  }
+
+  // Update all elements
+  for (let i = 0; i < requiredCount; i++) {
     const box = nearby[i];
     const el = debugWallEls[i];
 
@@ -597,7 +598,7 @@ function updateDebugWalls() {
     el.style.width = `${box.w}px`;
     el.style.height = `${box.h}px`;
     el.style.background = `rgba(${r}, ${g}, ${b}, 0.2)`;
-    el.style.borderColor = `rgba(${r}, ${g}, ${b}, 0.6)`;
+    el.style.border = `1px solid rgba(${r}, ${g}, ${b}, 0.6)`;
     el.style.transform = `translate3d(${box.x}px, ${box.y}px, ${box.z}px)`;
   }
 }
@@ -698,12 +699,16 @@ function setupMessageListener() {
 // ============================================================================
 
 function init() {
+  // Guard: if already running or root exists, do nothing
+  if (running) return;
+  if (document.getElementById('dom3d-root')) return;
+
   createOverlay();
   scanDOM(true);  // scan with player initialization
   createPlayer();
   createDebugDisplay();
   createMarkers();
-  createDebugWalls();
+  // Debug walls will be created by updateDebugWalls() in first render
   setupInput();
   setupMessageListener();
 
@@ -770,7 +775,8 @@ function cleanup() {
 // Entry
 // ============================================================================
 
-if ((window as any).__DOM3D_ACTIVE__) {
+// Toggle behavior: if already active, cleanup; otherwise init
+if ((window as any).__DOM3D_ACTIVE__ || document.getElementById('dom3d-root')) {
   cleanup();
 } else {
   (window as any).__DOM3D_ACTIVE__ = true;

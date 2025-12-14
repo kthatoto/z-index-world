@@ -43,7 +43,7 @@ test.describe('z-index-world extension', () => {
 
     // Check that overlay doesn't exist yet
     let overlayExists = await page.evaluate(() => {
-      return !!document.getElementById('dom3d-game-root');
+      return !!document.getElementById('dom3d-root');
     });
     expect(overlayExists).toBe(false);
 
@@ -55,7 +55,7 @@ test.describe('z-index-world extension', () => {
 
     // Check overlay exists
     overlayExists = await page.evaluate(() => {
-      return !!document.getElementById('dom3d-game-root');
+      return !!document.getElementById('dom3d-root');
     });
     expect(overlayExists).toBe(true);
 
@@ -73,7 +73,7 @@ test.describe('z-index-world extension', () => {
 
     // Check overlay styles (preserve-3d for 3D transforms)
     const overlayStyles = await page.evaluate(() => {
-      const el = document.getElementById('dom3d-game-root');
+      const el = document.getElementById('dom3d-root');
       if (!el) return null;
       const style = getComputedStyle(el);
       return {
@@ -212,8 +212,20 @@ test.describe('z-index-world extension', () => {
       });
     };
 
-    // Wait for player to settle
-    await page.waitForTimeout(500);
+    // Wait for player to be grounded (Z stabilizes)
+    let prevZ = await getPlayerZ();
+    let stableCount = 0;
+    for (let i = 0; i < 50; i++) {
+      await page.waitForTimeout(50);
+      const z = await getPlayerZ();
+      if (z !== null && prevZ !== null && Math.abs(z - prevZ) < 1) {
+        stableCount++;
+        if (stableCount >= 3) break;  // Z stable for 3 consecutive checks
+      } else {
+        stableCount = 0;
+      }
+      prevZ = z;
+    }
 
     const initialZ = await getPlayerZ();
     console.log('Initial Z:', initialZ);
