@@ -45,6 +45,7 @@ let player = {
 let keys = { h: false, j: false, k: false, l: false, space: false };
 let jumpQueued = false;
 let isGrounded = false;
+let groundZ = 0; // Z position of the floor the player is standing on (or would land on)
 let running = false;
 let rafId = null;
 let scanTimerId = null;
@@ -154,6 +155,17 @@ function scanDOM(initPlayer = false) {
             d: BOX_D
         });
     }
+    // Add base floor from documentElement (real element-derived floor, not virtual clamp)
+    const docRect = document.documentElement.getBoundingClientRect();
+    const baseFloor = {
+        x: docRect.left,
+        y: docRect.top,
+        z: 0,
+        w: docRect.width,
+        h: docRect.height,
+        d: 1 // thin floor at z=0
+    };
+    boxes.push(baseFloor);
     grid = buildGrid(boxes);
     if (initPlayer) {
         pickStartGoal();
@@ -161,19 +173,9 @@ function scanDOM(initPlayer = false) {
     }
 }
 function pickStartGoal() {
-    // If no boxes found, create a virtual ground plane that covers everything
-    if (boxes.length === 0) {
-        const groundBox = {
-            x: -1000,
-            y: -1000,
-            z: 0,
-            w: window.innerWidth + 2000,
-            h: window.innerHeight + 2000,
-            d: BOX_D
-        };
-        boxes.push(groundBox);
-        grid = buildGrid(boxes);
-    }
+    // Base floor is always added in scanDOM, so boxes is never empty
+    if (boxes.length === 0)
+        return;
     startBox = boxes.reduce((a, b) => a.z < b.z ? a : b);
     goalBox = boxes.reduce((a, b) => a.z > b.z ? a : b);
 }
@@ -235,6 +237,7 @@ function physics(dt) {
                 player.z = boxTop;
                 player.vz = 0;
                 isGrounded = true;
+                groundZ = boxTop; // Update groundZ on step-up
                 // No X pushback - we climbed over it
             }
             else {
@@ -266,6 +269,7 @@ function physics(dt) {
                 player.z = boxTop;
                 player.vz = 0;
                 isGrounded = true;
+                groundZ = boxTop; // Update groundZ on step-up
                 // No Y pushback - we climbed over it
             }
             else {
@@ -297,18 +301,30 @@ function physics(dt) {
             }
             else {
                 // Land on floor
-                player.z = box.z + box.d;
+                const floorTop = box.z + box.d;
+                player.z = floorTop;
                 player.vz = 0;
                 isGrounded = true;
+                groundZ = floorTop; // Update groundZ on landing
             }
         }
     }
-    // 7) Floor at z=0 (world floor)
-    if (player.z < 0) {
-        player.z = 0;
-        player.vz = 0;
-        isGrounded = true;
+    // 7) Update groundZ for shadow calculation (find floor beneath player)
+    // Look for the highest box top that is at or below player's feet
+    let bestGroundZ = 0; // base floor at z=0
+    for (const box of nearby) {
+        if (overlapX(player, box) && overlapY(player, box)) {
+            const boxTop = box.z + box.d;
+            // Box top is at or below player's feet (with small epsilon)
+            if (boxTop <= player.z + 1) {
+                if (boxTop > bestGroundZ) {
+                    bestGroundZ = boxTop;
+                }
+            }
+        }
     }
+    groundZ = bestGroundZ;
+    // No virtual floor clamp - floor is determined by Box collision only
 }
 // ============================================================================
 // Render - Using translate3d for X, Y, Z positioning
@@ -317,9 +333,10 @@ function render() {
     if (!playerEl)
         return;
     // Use translate3d for positioning - Z is now properly reflected in CSS!
-    // Additional visual effects (shadow) based on Z height
-    const shadowBlur = Math.max(0, player.z / 5);
-    const shadowOffset = Math.max(0, player.z / 10);
+    // Shadow based on height above ground (not absolute Z)
+    const heightAboveGround = Math.max(0, player.z - groundZ);
+    const shadowBlur = heightAboveGround / 5;
+    const shadowOffset = heightAboveGround / 10;
     currentTransform = `translate3d(${player.x.toFixed(1)}px, ${player.y.toFixed(1)}px, ${player.z.toFixed(1)}px)`;
     playerEl.style.transform = currentTransform;
     playerEl.style.boxShadow = `${shadowOffset}px ${shadowOffset}px ${shadowBlur}px rgba(0,0,0,0.4)`;
@@ -332,6 +349,7 @@ function render() {
       <div>Y: <span style="color: #6f6">${player.y.toFixed(0)}</span></div>
       <div>Z: <span style="color: #66f">${player.z.toFixed(0)}</span></div>
       <div>vZ: <span style="color: #ff0">${player.vz.toFixed(0)}</span></div>
+      <div>groundZ: <span style="color: #f0f">${groundZ.toFixed(0)}</span></div>
       <div>Grounded: <span style="color: ${isGrounded ? '#0f0' : '#f00'}">${isGrounded ? 'Yes' : 'No'}</span></div>
       <div style="margin-top: 6px; font-size: 9px; color: #aaa; word-break: break-all;">
         transform:<br><span style="color: #0ff">${currentTransform}</span>
@@ -355,6 +373,8 @@ function createOverlay() {
     pointer-events: none;
     z-index: 2147483647;
     transform-style: preserve-3d;
+    transform: translateZ(0px);
+    perspective: 1000000px;
   `;
     document.body.appendChild(root);
 }
@@ -690,6 +710,7 @@ function cleanup() {
     };
     jumpQueued = false;
     isGrounded = false;
+    groundZ = 0;
     lastTime = 0;
     currentTransform = '';
     window.__DOM3D_ACTIVE__ = false;
