@@ -33,6 +33,8 @@ let debugEl = null;
 let startMarkerEl = null;
 let goalMarkerEl = null;
 let debugWallEls = [];
+// Store original styles for cleanup
+let modifiedElements = [];
 let boxes = [];
 let grid = new Map();
 let startBox = null;
@@ -50,6 +52,9 @@ let running = false;
 let rafId = null;
 let scanTimerId = null;
 let lastTime = 0;
+// Store original body styles for cleanup
+let originalBodyTransformStyle = '';
+let originalBodyPerspective = '';
 // Track current transform for debug display
 let currentTransform = '';
 // ============================================================================
@@ -119,12 +124,15 @@ function normalizeZ(rawZ) {
 function scanDOM(initPlayer = false) {
     const vw = window.innerWidth;
     const vh = window.innerHeight;
+    // Restore previously modified elements before rescanning
+    restoreModifiedElements();
     boxes = [];
     for (const el of document.querySelectorAll('*')) {
         if (EXCLUDED_TAGS.has(el.tagName))
             continue;
         if (el.id?.startsWith('dom3d-'))
             continue;
+        const htmlEl = el;
         const style = getComputedStyle(el);
         if (style.display === 'none' || style.visibility === 'hidden')
             continue;
@@ -146,10 +154,23 @@ function scanDOM(initPlayer = false) {
             continue;
         if (rect.bottom < -VIEWPORT_MARGIN || rect.top > vh + VIEWPORT_MARGIN)
             continue;
+        const z = normalizeZ(Math.max(0, zIndex));
+        // Apply 3D transform to actual DOM element
+        const originalTransform = htmlEl.style.transform;
+        const originalTransformStyle = htmlEl.style.transformStyle;
+        modifiedElements.push({ el: htmlEl, originalTransform, originalTransformStyle });
+        // Apply translateZ to make element float at its z-index height
+        htmlEl.style.transformStyle = 'preserve-3d';
+        if (originalTransform && !originalTransform.includes('translateZ')) {
+            htmlEl.style.transform = `${originalTransform} translateZ(${z}px)`;
+        }
+        else {
+            htmlEl.style.transform = `translateZ(${z}px)`;
+        }
         boxes.push({
             x: rect.left,
             y: rect.top,
-            z: normalizeZ(Math.max(0, zIndex)),
+            z: z,
             w: rect.width,
             h: rect.height,
             d: BOX_D
@@ -172,6 +193,13 @@ function scanDOM(initPlayer = false) {
         pickStartGoal();
         initPlayerPosition();
     }
+}
+function restoreModifiedElements() {
+    for (const { el, originalTransform, originalTransformStyle } of modifiedElements) {
+        el.style.transform = originalTransform;
+        el.style.transformStyle = originalTransformStyle;
+    }
+    modifiedElements = [];
 }
 function pickStartGoal() {
     // Base floor is always added in scanDOM, so boxes is never empty
@@ -670,6 +698,11 @@ function init() {
         return;
     if (document.getElementById('dom3d-root'))
         return;
+    // Apply 3D perspective to body so elements can float in 3D
+    originalBodyTransformStyle = document.body.style.transformStyle;
+    originalBodyPerspective = document.body.style.perspective;
+    document.body.style.transformStyle = 'preserve-3d';
+    document.body.style.perspective = '1000px';
     createOverlay();
     scanDOM(true); // scan with player initialization
     rebuildDebugWalls(); // build walls for ALL boxes
@@ -702,6 +735,11 @@ function cleanup() {
     removeInput();
     window.removeEventListener('scroll', onScrollResize);
     window.removeEventListener('resize', onScrollResize);
+    // Restore body styles
+    document.body.style.transformStyle = originalBodyTransformStyle;
+    document.body.style.perspective = originalBodyPerspective;
+    // Restore modified DOM elements
+    restoreModifiedElements();
     root?.remove();
     debugEl?.remove();
     document.getElementById('dom3d-marker-style')?.remove();
