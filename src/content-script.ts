@@ -47,9 +47,14 @@ const EXCLUDED_TAGS = new Set([
 
 let root: HTMLDivElement | null = null;
 let playerEl: HTMLDivElement | null = null;
+let debugEl: HTMLDivElement | null = null;
+let startMarkerEl: HTMLDivElement | null = null;
+let goalMarkerEl: HTMLDivElement | null = null;
 
 let boxes: Box[] = [];
 let grid: Map<string, Box[]> = new Map();
+let startBox: Box | null = null;
+let goalBox: Box | null = null;
 
 let player: Player = {
   x: 100, y: 100, z: 0,
@@ -58,7 +63,7 @@ let player: Player = {
 };
 
 let keys = { h: false, j: false, k: false, l: false, space: false };
-let spaceWasPressed = false;
+let jumpQueued = false;
 
 let running = false;
 let rafId: number | null = null;
@@ -163,12 +168,27 @@ function scan() {
 
   grid = buildGrid(boxes);
 
-  // 初期位置: 最もzが低いボックスの上
-  if (boxes.length > 0 && player.z === 0 && player.vz === 0) {
-    const start = boxes.reduce((a, b) => a.z < b.z ? a : b);
-    player.x = start.x + start.w / 2 - player.w / 2;
-    player.y = start.y + start.h / 2 - player.h / 2;
-    player.z = start.z + start.d;
+  // スタート: 最もzが低いボックス、ゴール: 最もzが高いボックス
+  if (boxes.length > 0) {
+    startBox = boxes.reduce((a, b) => a.z < b.z ? a : b);
+    goalBox = boxes.reduce((a, b) => a.z > b.z ? a : b);
+  }
+
+  // 初期位置: スタートボックスの上（ただし重なる全ボックスの最上部に配置）
+  if (boxes.length > 0 && player.z === 0 && player.vz === 0 && startBox) {
+    player.x = startBox.x + startBox.w / 2 - player.w / 2;
+    player.y = startBox.y + startBox.h / 2 - player.h / 2;
+
+    // スポーン位置で重なっている全ボックスの最上部を探す
+    let maxTop = startBox.z + startBox.d;
+    for (const box of boxes) {
+      if (player.x < box.x + box.w && player.x + player.w > box.x &&
+          player.y < box.y + box.h && player.y + player.h > box.y) {
+        const top = box.z + box.d;
+        if (top > maxTop) maxTop = top;
+      }
+    }
+    player.z = maxTop;
   }
 }
 
@@ -219,13 +239,10 @@ function physics() {
   if (keys.k) player.vy = -MOVE_SPEED;
   if (keys.j) player.vy = MOVE_SPEED;
 
-  // Jump: space押下時にvzを設定（1回のみ）
-  if (keys.space && !spaceWasPressed) {
+  // Jump: キュー方式（keydownイベントで即座にキュー）
+  if (jumpQueued) {
     player.vz = JUMP_VZ;
-    spaceWasPressed = true;
-  }
-  if (!keys.space) {
-    spaceWasPressed = false;
+    jumpQueued = false;
   }
 
   // 2) Gravity
@@ -234,10 +251,22 @@ function physics() {
   // 3) Get nearby boxes
   const nearby = queryNearby(player);
 
-  // 4) Move X -> resolve
+  // Helper: check if player was already intersecting before move (for X/Y only)
+  const wasIntersectingX = (box: Box, oldX: number) =>
+    oldX < box.x + box.w && oldX + player.w > box.x &&
+    player.y < box.y + box.h && player.y + player.h > box.y &&
+    player.z < box.z + box.d && player.z + player.d > box.z;
+
+  const wasIntersectingY = (box: Box, oldY: number) =>
+    player.x < box.x + box.w && player.x + player.w > box.x &&
+    oldY < box.y + box.h && oldY + player.h > box.y &&
+    player.z < box.z + box.d && player.z + player.d > box.z;
+
+  // 4) Move X -> resolve (only if newly entered box)
+  const oldX = player.x;
   player.x += player.vx;
   for (const box of nearby) {
-    if (intersects(player, box)) {
+    if (!wasIntersectingX(box, oldX) && intersects(player, box)) {
       const penL = (player.x + player.w) - box.x;
       const penR = (box.x + box.w) - player.x;
       if (penL < penR) {
@@ -249,10 +278,11 @@ function physics() {
     }
   }
 
-  // Move Y -> resolve
+  // Move Y -> resolve (only if newly entered box)
+  const oldY = player.y;
   player.y += player.vy;
   for (const box of nearby) {
-    if (intersects(player, box)) {
+    if (!wasIntersectingY(box, oldY) && intersects(player, box)) {
       const penT = (player.y + player.h) - box.y;
       const penB = (box.y + box.h) - player.y;
       if (penT < penB) {
@@ -264,7 +294,7 @@ function physics() {
     }
   }
 
-  // Move Z -> resolve
+  // Move Z -> resolve (ALWAYS resolve Z to ensure proper landing/ceiling collision)
   player.z += player.vz;
   for (const box of nearby) {
     if (intersects(player, box)) {
@@ -293,6 +323,17 @@ function physics() {
 function render() {
   if (!playerEl) return;
   playerEl.style.transform = `translate3d(${player.x}px, ${player.y}px, ${player.z}px)`;
+
+  // Update debug display
+  if (debugEl) {
+    debugEl.innerHTML = `
+      <div style="margin-bottom: 4px; color: #fff; font-weight: bold;">🎮 z-index-world</div>
+      <div>X: <span style="color: #f66">${player.x.toFixed(0)}</span></div>
+      <div>Y: <span style="color: #6f6">${player.y.toFixed(0)}</span></div>
+      <div>Z: <span style="color: #66f">${player.z.toFixed(0)}</span></div>
+      <div style="margin-top: 4px; font-size: 10px; color: #888;">HJKL:移動 Space:ジャンプ</div>
+    `;
+  }
 }
 
 // ============================================================================
@@ -359,6 +400,120 @@ function createPlayer() {
 }
 
 // ============================================================================
+// Create Debug Display
+// ============================================================================
+
+function createDebugDisplay() {
+  if (!root) return;
+
+  debugEl = document.createElement('div');
+  debugEl.id = 'dom3d-debug';
+  debugEl.style.cssText = `
+    position: fixed;
+    top: 10px;
+    right: 10px;
+    background: linear-gradient(135deg, rgba(0, 0, 0, 0.9) 0%, rgba(30, 30, 50, 0.9) 100%);
+    color: #0ff;
+    font-family: 'Courier New', monospace;
+    font-size: 11px;
+    padding: 10px 14px;
+    border-radius: 6px;
+    border: 1px solid rgba(0, 255, 255, 0.3);
+    box-shadow: 0 0 20px rgba(0, 255, 255, 0.2), inset 0 0 30px rgba(0, 0, 0, 0.3);
+    z-index: 2147483647;
+    pointer-events: none;
+    text-shadow: 0 0 5px rgba(0, 255, 255, 0.5);
+  `;
+  document.body.appendChild(debugEl);
+}
+
+// ============================================================================
+// Create Markers
+// ============================================================================
+
+function createMarkers() {
+  if (!root) return;
+
+  // Start marker
+  if (startBox) {
+    startMarkerEl = document.createElement('div');
+    startMarkerEl.id = 'dom3d-start-marker';
+    startMarkerEl.style.cssText = `
+      position: absolute;
+      width: 30px;
+      height: 30px;
+      background: rgba(46, 204, 113, 0.8);
+      border: 2px solid #27ae60;
+      border-radius: 50%;
+      transform: translate3d(${startBox.x + startBox.w / 2 - 15}px, ${startBox.y + startBox.h / 2 - 15}px, ${startBox.z + startBox.d + 1}px);
+      box-shadow: 0 0 10px rgba(46, 204, 113, 0.5);
+    `;
+    // Add "S" label
+    const label = document.createElement('div');
+    label.style.cssText = `
+      position: absolute;
+      width: 100%;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-weight: bold;
+      font-size: 14px;
+      font-family: sans-serif;
+    `;
+    label.textContent = 'S';
+    startMarkerEl.appendChild(label);
+    root.appendChild(startMarkerEl);
+  }
+
+  // Goal marker
+  if (goalBox) {
+    goalMarkerEl = document.createElement('div');
+    goalMarkerEl.id = 'dom3d-goal-marker';
+    goalMarkerEl.style.cssText = `
+      position: absolute;
+      width: 30px;
+      height: 30px;
+      background: rgba(241, 196, 15, 0.8);
+      border: 2px solid #f39c12;
+      border-radius: 50%;
+      transform: translate3d(${goalBox.x + goalBox.w / 2 - 15}px, ${goalBox.y + goalBox.h / 2 - 15}px, ${goalBox.z + goalBox.d + 1}px);
+      box-shadow: 0 0 15px rgba(241, 196, 15, 0.7);
+      animation: pulse 1.5s ease-in-out infinite;
+    `;
+    // Add "G" label
+    const label = document.createElement('div');
+    label.style.cssText = `
+      position: absolute;
+      width: 100%;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-weight: bold;
+      font-size: 14px;
+      font-family: sans-serif;
+    `;
+    label.textContent = 'G';
+    goalMarkerEl.appendChild(label);
+    root.appendChild(goalMarkerEl);
+  }
+
+  // Add pulse animation
+  const style = document.createElement('style');
+  style.id = 'dom3d-marker-style';
+  style.textContent = `
+    @keyframes pulse {
+      0%, 100% { transform: translate3d(${goalBox ? goalBox.x + goalBox.w / 2 - 15 : 0}px, ${goalBox ? goalBox.y + goalBox.h / 2 - 15 : 0}px, ${goalBox ? goalBox.z + goalBox.d + 1 : 0}px) scale(1); }
+      50% { transform: translate3d(${goalBox ? goalBox.x + goalBox.w / 2 - 15 : 0}px, ${goalBox ? goalBox.y + goalBox.h / 2 - 15 : 0}px, ${goalBox ? goalBox.z + goalBox.d + 1 : 0}px) scale(1.1); }
+    }
+  `;
+  document.head.appendChild(style);
+}
+
+// ============================================================================
 // Input
 // ============================================================================
 
@@ -379,7 +534,7 @@ function onKeyDown(e: KeyboardEvent) {
   if (k === 'j') { keys.j = true; e.preventDefault(); }
   if (k === 'k') { keys.k = true; e.preventDefault(); }
   if (k === 'l') { keys.l = true; e.preventDefault(); }
-  if (k === ' ') { keys.space = true; e.preventDefault(); }
+  if (k === ' ') { keys.space = true; jumpQueued = true; e.preventDefault(); }
 }
 
 function onKeyUp(e: KeyboardEvent) {
@@ -441,6 +596,8 @@ function init() {
   createOverlay();
   scan();
   createPlayer();
+  createDebugDisplay();
+  createMarkers();
   setupInput();
   setupMessageListener();
 
@@ -470,16 +627,25 @@ function cleanup() {
   window.removeEventListener('resize', onScrollResize);
 
   root?.remove();
+  debugEl?.remove();
+  document.getElementById('dom3d-marker-style')?.remove();
+
   root = null;
   playerEl = null;
+  debugEl = null;
+  startMarkerEl = null;
+  goalMarkerEl = null;
   boxes = [];
   grid.clear();
+  startBox = null;
+  goalBox = null;
 
   player = {
     x: 100, y: 100, z: 0,
     w: PLAYER_SIZE, h: PLAYER_SIZE, d: PLAYER_SIZE,
     vx: 0, vy: 0, vz: 0
   } as Player;
+  jumpQueued = false;
 
   (window as any).__DOM3D_ACTIVE__ = false;
 }
