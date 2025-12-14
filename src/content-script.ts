@@ -197,6 +197,7 @@ function scanDOM(initPlayer: boolean = false) {
   }
 
   // Add base floor from documentElement (real element-derived floor, not virtual clamp)
+  // This is added at the END of boxes array so we can skip it in debug wall visualization
   const docRect = document.documentElement.getBoundingClientRect();
   const baseFloor: Box = {
     x: docRect.left,
@@ -206,7 +207,7 @@ function scanDOM(initPlayer: boolean = false) {
     h: docRect.height,
     d: 1  // thin floor at z=0
   };
-  boxes.push(baseFloor);
+  boxes.push(baseFloor);  // Always last element
 
   grid = buildGrid(boxes);
 
@@ -587,7 +588,8 @@ function createDebugWallElement(): HTMLDivElement {
 function rebuildDebugWalls() {
   if (!root) return;
 
-  const requiredCount = boxes.length;
+  // Skip the last element (base floor) - it covers the whole viewport
+  const requiredCount = Math.max(0, boxes.length - 1);
 
   // Add more elements if needed (pool expansion)
   while (debugWallEls.length < requiredCount) {
