@@ -74,14 +74,12 @@ test.describe('z-index-world extension', () => {
         position: style.position,
         zIndex: style.zIndex,
         transformStyle: style.transformStyle,
-        perspective: style.perspective,
       };
     });
 
     expect(overlayStyles?.position).toBe('fixed');
     expect(overlayStyles?.zIndex).toBe('2147483647');
     expect(overlayStyles?.transformStyle).toBe('preserve-3d');
-    // perspective is optional
 
     // Check player has transform with translate3d
     const playerTransform = await page.evaluate(() => {
@@ -162,7 +160,7 @@ test.describe('z-index-world extension', () => {
     console.log('Movement tests passed!');
   });
 
-  test('jump with space key', async () => {
+  test('jump with space key changes z', async () => {
     const page = await context.newPage();
     await page.goto('https://example.com');
     await page.waitForLoadState('domcontentloaded');
@@ -182,23 +180,18 @@ test.describe('z-index-world extension', () => {
       });
     };
 
-    // Move player off platform first so it falls to ground (z=0)
-    await page.keyboard.down('h');
+    // Wait for player to settle
     await page.waitForTimeout(500);
-    await page.keyboard.up('h');
-
-    // Wait for player to settle on ground
-    await page.waitForTimeout(1000);
 
     const initialZ = await getPlayerZ();
-    console.log('Initial Z (after settling):', initialZ);
+    console.log('Initial Z:', initialZ);
 
     // Jump
     await page.keyboard.press(' ');
 
     // Sample Z multiple times to catch the jump peak
     let maxZ = initialZ ?? 0;
-    for (let i = 0; i < 15; i++) {
+    for (let i = 0; i < 20; i++) {
       await page.waitForTimeout(30);
       const z = await getPlayerZ();
       if (z !== null && z > maxZ) {
@@ -207,15 +200,13 @@ test.describe('z-index-world extension', () => {
     }
     console.log('Max Z during jump:', maxZ);
 
-    // Z should have increased during jump (even if landing back at same z)
-    // If player started at z=0, maxZ should be > 0
-    // If player started on platform, they may land back on it
-    expect(maxZ).toBeGreaterThanOrEqual(initialZ ?? 0);
+    // Z should increase during jump
+    expect(maxZ).toBeGreaterThan(initialZ ?? 0);
 
     console.log('Jump test passed!');
   });
 
-  test('debug walls are rendered', async () => {
+  test('player is 6-face cube', async () => {
     const page = await context.newPage();
     await page.goto('https://example.com');
     await page.waitForLoadState('domcontentloaded');
@@ -224,48 +215,25 @@ test.describe('z-index-world extension', () => {
     await injectContentScript(page);
     await page.waitForTimeout(500);
 
-    // Check debug walls container exists
-    const debugWallsExist = await page.evaluate(() => {
-      return !!document.getElementById('dom3d-debug-walls');
+    // Check player has 6 face divs
+    const faceCount = await page.evaluate(() => {
+      const player = document.getElementById('dom3d-player');
+      if (!player) return 0;
+      return player.children.length;
     });
-    expect(debugWallsExist).toBe(true);
 
-    // Check some debug walls are rendered
-    const debugWallCount = await page.evaluate(() => {
-      const container = document.getElementById('dom3d-debug-walls');
-      if (!container) return 0;
-      return container.querySelectorAll('.dom3d-debug-wall').length;
+    expect(faceCount).toBe(6);
+
+    // Check player has preserve-3d
+    const transformStyle = await page.evaluate(() => {
+      const player = document.getElementById('dom3d-player');
+      if (!player) return null;
+      return getComputedStyle(player).transformStyle;
     });
-    console.log('Debug wall count:', debugWallCount);
-    expect(debugWallCount).toBeGreaterThan(0);
 
-    console.log('Debug walls test passed!');
-  });
+    expect(transformStyle).toBe('preserve-3d');
 
-  test('markers are created', async () => {
-    const page = await context.newPage();
-    await page.goto('https://example.com');
-    await page.waitForLoadState('domcontentloaded');
-
-    // Inject content script
-    await injectContentScript(page);
-    await page.waitForTimeout(500);
-
-    // Check start marker exists
-    const startMarkerExists = await page.evaluate(() => {
-      const el = document.getElementById('dom3d-start-marker');
-      return el !== null && el.textContent === 'S';
-    });
-    expect(startMarkerExists).toBe(true);
-
-    // Check goal marker exists
-    const goalMarkerExists = await page.evaluate(() => {
-      const el = document.getElementById('dom3d-goal-marker');
-      return el !== null && el.textContent === 'G';
-    });
-    expect(goalMarkerExists).toBe(true);
-
-    console.log('Markers test passed!');
+    console.log('6-face cube test passed!');
   });
 
   test('player transform uses translate3d for Layers visibility', async () => {
@@ -288,23 +256,9 @@ test.describe('z-index-world extension', () => {
     });
 
     expect(playerStyle?.transform).toContain('translate3d');
-    // No scale - simpler transform
     expect(playerStyle?.transformStyle).toBe('preserve-3d');
-
-    // Check debug walls also use translate3d
-    const wallTransforms = await page.evaluate(() => {
-      const container = document.getElementById('dom3d-debug-walls');
-      if (!container) return [];
-      const walls = container.querySelectorAll('.dom3d-debug-wall');
-      return Array.from(walls).slice(0, 5).map(w => (w as HTMLElement).style.transform);
-    });
-
-    for (const transform of wallTransforms) {
-      expect(transform).toContain('translate3d');
-    }
 
     console.log('Transform test passed!');
     console.log('Player transform:', playerStyle?.transform);
-    console.log('Sample wall transforms:', wallTransforms);
   });
 });
