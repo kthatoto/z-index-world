@@ -34,6 +34,12 @@ const VIEWPORT_MARGIN = 300;
 const PLAYER_SIZE = 20;
 const PLAYER_DEPTH = 20;
 
+// Z normalization: clamp extreme z-index values
+const Z_MAX = 10000;
+
+// Step-up: player can climb obstacles up to this height
+const STEP_HEIGHT = 32;
+
 // Physics constants (per second, will be multiplied by dt)
 const MOVE_SPEED = 300;  // pixels per second
 const GRAVITY = 800;     // pixels per second^2
@@ -53,6 +59,7 @@ let playerEl: HTMLDivElement | null = null;
 let debugEl: HTMLDivElement | null = null;
 let startMarkerEl: HTMLDivElement | null = null;
 let goalMarkerEl: HTMLDivElement | null = null;
+let debugWallEls: HTMLDivElement[] = [];
 
 let boxes: Box[] = [];
 let grid: Map<string, Box[]> = new Map();
@@ -73,6 +80,9 @@ let running = false;
 let rafId: number | null = null;
 let scanTimerId: number | null = null;
 let lastTime = 0;
+
+// Track current transform for debug display
+let currentTransform = '';
 
 // ============================================================================
 // 3D AABB Collision - Axis Separated
@@ -138,46 +148,15 @@ function queryNearby(p: Player): Box[] {
 }
 
 // ============================================================================
-// DOM Scan -> Boxes
+// DOM Scan -> Boxes (unified scan function)
 // ============================================================================
 
-function scan() {
-  const vw = window.innerWidth;
-  const vh = window.innerHeight;
-
-  boxes = [];
-
-  for (const el of document.querySelectorAll('*')) {
-    if (EXCLUDED_TAGS.has(el.tagName)) continue;
-    if ((el as HTMLElement).id?.startsWith('dom3d-')) continue;
-
-    const style = getComputedStyle(el);
-    if (style.display === 'none' || style.visibility === 'hidden') continue;
-
-    const rect = el.getBoundingClientRect();
-    if (rect.width < 10 || rect.height < 10) continue;
-    if (rect.right < -VIEWPORT_MARGIN || rect.left > vw + VIEWPORT_MARGIN) continue;
-    if (rect.bottom < -VIEWPORT_MARGIN || rect.top > vh + VIEWPORT_MARGIN) continue;
-
-    let zIndex = parseInt(style.zIndex, 10);
-    if (isNaN(zIndex) || zIndex < 0) zIndex = 0;
-
-    boxes.push({
-      x: rect.left,
-      y: rect.top,
-      z: zIndex,
-      w: rect.width,
-      h: rect.height,
-      d: BOX_D
-    });
-  }
-
-  grid = buildGrid(boxes);
-  pickStartGoal();
-  initPlayerPosition();
+function normalizeZ(rawZ: number): number {
+  // Clamp extreme z-index values to prevent scale issues
+  return Math.max(-Z_MAX, Math.min(Z_MAX, rawZ));
 }
 
-function rescan() {
+function scanDOM(initPlayer: boolean = false) {
   const vw = window.innerWidth;
   const vh = window.innerHeight;
 
@@ -201,7 +180,7 @@ function rescan() {
     boxes.push({
       x: rect.left,
       y: rect.top,
-      z: zIndex,
+      z: normalizeZ(zIndex),
       w: rect.width,
       h: rect.height,
       d: BOX_D
@@ -209,6 +188,11 @@ function rescan() {
   }
 
   grid = buildGrid(boxes);
+
+  if (initPlayer) {
+    pickStartGoal();
+    initPlayerPosition();
+  }
 }
 
 function pickStartGoal() {
@@ -262,41 +246,65 @@ function physics(dt: number) {
   // 3) Get nearby boxes
   const nearby = queryNearby(player);
 
-  // 4) Resolve X axis
-  // Move X, then check boxes where Y and Z overlap -> resolve X penetration
+  // 4) Resolve X axis with step-up
+  // Move X, then check boxes where Y and Z overlap -> resolve X penetration or step-up
   player.x += player.vx * dt;
   for (const box of nearby) {
     // Condition for X resolution: Y and Z must overlap
     if (overlapY(player, box) && overlapZ(player, box) && overlapX(player, box)) {
-      // Calculate penetration from both sides
-      const penLeft = (player.x + player.w) - box.x;   // player's right into box's left
-      const penRight = (box.x + box.w) - player.x;     // box's right into player's left
+      // Check if this is a low step we can climb
+      const boxTop = box.z + box.d;
+      const stepHeight = boxTop - player.z;
 
-      // Push out from the side with less penetration
-      if (penLeft < penRight) {
-        player.x = box.x - player.w;
+      if (stepHeight > 0 && stepHeight <= STEP_HEIGHT) {
+        // Step-up: raise player to stand on top of obstacle
+        player.z = boxTop;
+        player.vz = 0;
+        isGrounded = true;
+        // No X pushback - we climbed over it
       } else {
-        player.x = box.x + box.w;
+        // Calculate penetration from both sides
+        const penLeft = (player.x + player.w) - box.x;   // player's right into box's left
+        const penRight = (box.x + box.w) - player.x;     // box's right into player's left
+
+        // Push out from the side with less penetration
+        if (penLeft < penRight) {
+          player.x = box.x - player.w;
+        } else {
+          player.x = box.x + box.w;
+        }
+        player.vx = 0;
       }
-      player.vx = 0;
     }
   }
 
-  // 5) Resolve Y axis
-  // Move Y, then check boxes where X and Z overlap -> resolve Y penetration
+  // 5) Resolve Y axis with step-up
+  // Move Y, then check boxes where X and Z overlap -> resolve Y penetration or step-up
   player.y += player.vy * dt;
   for (const box of nearby) {
     // Condition for Y resolution: X and Z must overlap
     if (overlapX(player, box) && overlapZ(player, box) && overlapY(player, box)) {
-      const penTop = (player.y + player.h) - box.y;    // player's bottom into box's top
-      const penBottom = (box.y + box.h) - player.y;    // box's bottom into player's top
+      // Check if this is a low step we can climb
+      const boxTop = box.z + box.d;
+      const stepHeight = boxTop - player.z;
 
-      if (penTop < penBottom) {
-        player.y = box.y - player.h;
+      if (stepHeight > 0 && stepHeight <= STEP_HEIGHT) {
+        // Step-up: raise player to stand on top of obstacle
+        player.z = boxTop;
+        player.vz = 0;
+        isGrounded = true;
+        // No Y pushback - we climbed over it
       } else {
-        player.y = box.y + box.h;
+        const penTop = (player.y + player.h) - box.y;    // player's bottom into box's top
+        const penBottom = (box.y + box.h) - player.y;    // box's bottom into player's top
+
+        if (penTop < penBottom) {
+          player.y = box.y - player.h;
+        } else {
+          player.y = box.y + box.h;
+        }
+        player.vy = 0;
       }
-      player.vy = 0;
     }
   }
 
@@ -333,21 +341,23 @@ function physics(dt: number) {
 }
 
 // ============================================================================
-// Render
+// Render - Using translate3d for X, Y, Z positioning
 // ============================================================================
 
 function render() {
   if (!playerEl) return;
 
-  // Player position (2D representation, z affects visual only via scale or shadow)
-  playerEl.style.left = `${player.x}px`;
-  playerEl.style.top = `${player.y}px`;
-
-  // Use scale or shadow to indicate Z height
-  const zScale = 1 + player.z / 500;
+  // Use translate3d for positioning - Z is now properly reflected in CSS!
+  // Additional visual effects (shadow) based on Z height
   const shadowBlur = Math.max(0, player.z / 5);
-  playerEl.style.transform = `scale(${zScale})`;
-  playerEl.style.boxShadow = `0 ${shadowBlur}px ${shadowBlur * 2}px rgba(0,0,0,0.3)`;
+  const shadowOffset = Math.max(0, player.z / 10);
+
+  currentTransform = `translate3d(${player.x.toFixed(1)}px, ${player.y.toFixed(1)}px, ${player.z.toFixed(1)}px)`;
+  playerEl.style.transform = currentTransform;
+  playerEl.style.boxShadow = `${shadowOffset}px ${shadowOffset}px ${shadowBlur}px rgba(0,0,0,0.4)`;
+
+  // Update debug walls
+  updateDebugWalls();
 
   // Update debug display
   if (debugEl) {
@@ -356,14 +366,18 @@ function render() {
       <div>X: <span style="color: #f66">${player.x.toFixed(0)}</span></div>
       <div>Y: <span style="color: #6f6">${player.y.toFixed(0)}</span></div>
       <div>Z: <span style="color: #66f">${player.z.toFixed(0)}</span></div>
+      <div>vZ: <span style="color: #ff0">${player.vz.toFixed(0)}</span></div>
       <div>Grounded: <span style="color: ${isGrounded ? '#0f0' : '#f00'}">${isGrounded ? 'Yes' : 'No'}</span></div>
+      <div style="margin-top: 6px; font-size: 9px; color: #aaa; word-break: break-all;">
+        transform:<br><span style="color: #0ff">${currentTransform}</span>
+      </div>
       <div style="margin-top: 4px; font-size: 10px; color: #888;">HJKL:Move Space:Jump</div>
     `;
   }
 }
 
 // ============================================================================
-// Create Overlay
+// Create Overlay (with preserve-3d for proper 3D transform)
 // ============================================================================
 
 function createOverlay() {
@@ -371,16 +385,19 @@ function createOverlay() {
   root.id = 'dom3d-game-root';
   root.style.cssText = `
     position: fixed;
-    left: 0; top: 0;
-    width: 100vw; height: 100vh;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
     pointer-events: none;
     z-index: 2147483647;
+    transform-style: preserve-3d;
   `;
   document.body.appendChild(root);
 }
 
 // ============================================================================
-// Create Player (2D div - no CSS 3D cube needed)
+// Create Player (2D div with translate3d positioning)
 // ============================================================================
 
 function createPlayer() {
@@ -390,13 +407,16 @@ function createPlayer() {
   playerEl.id = 'dom3d-player';
   playerEl.style.cssText = `
     position: absolute;
+    left: 0;
+    top: 0;
     width: ${PLAYER_SIZE}px;
     height: ${PLAYER_SIZE}px;
     background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%);
     border: 2px solid #fff;
     border-radius: 4px;
     box-sizing: border-box;
-    transform-origin: center center;
+    will-change: transform;
+    transform-style: preserve-3d;
   `;
 
   root.appendChild(playerEl);
@@ -425,6 +445,7 @@ function createDebugDisplay() {
     z-index: 2147483647;
     pointer-events: none;
     text-shadow: 0 0 5px rgba(0, 255, 255, 0.5);
+    max-width: 200px;
   `;
   document.body.appendChild(debugEl);
 }
@@ -442,8 +463,8 @@ function createMarkers() {
     startMarkerEl.id = 'dom3d-start-marker';
     startMarkerEl.style.cssText = `
       position: absolute;
-      left: ${startBox.x + startBox.w / 2 - 15}px;
-      top: ${startBox.y + startBox.h / 2 - 15}px;
+      left: 0;
+      top: 0;
       width: 30px;
       height: 30px;
       background: rgba(46, 204, 113, 0.8);
@@ -457,6 +478,8 @@ function createMarkers() {
       font-weight: bold;
       font-size: 14px;
       font-family: sans-serif;
+      will-change: transform;
+      transform: translate3d(${startBox.x + startBox.w / 2 - 15}px, ${startBox.y + startBox.h / 2 - 15}px, ${startBox.z + startBox.d}px);
     `;
     startMarkerEl.textContent = 'S';
     root.appendChild(startMarkerEl);
@@ -468,8 +491,8 @@ function createMarkers() {
     goalMarkerEl.id = 'dom3d-goal-marker';
     goalMarkerEl.style.cssText = `
       position: absolute;
-      left: ${goalBox.x + goalBox.w / 2 - 15}px;
-      top: ${goalBox.y + goalBox.h / 2 - 15}px;
+      left: 0;
+      top: 0;
       width: 30px;
       height: 30px;
       background: rgba(241, 196, 15, 0.8);
@@ -483,6 +506,8 @@ function createMarkers() {
       font-weight: bold;
       font-size: 14px;
       font-family: sans-serif;
+      will-change: transform;
+      transform: translate3d(${goalBox.x + goalBox.w / 2 - 15}px, ${goalBox.y + goalBox.h / 2 - 15}px, ${goalBox.z + goalBox.d}px);
       animation: dom3d-pulse 1.5s ease-in-out infinite;
     `;
     goalMarkerEl.textContent = 'G';
@@ -494,11 +519,87 @@ function createMarkers() {
   style.id = 'dom3d-marker-style';
   style.textContent = `
     @keyframes dom3d-pulse {
-      0%, 100% { transform: scale(1); box-shadow: 0 0 15px rgba(241, 196, 15, 0.7); }
-      50% { transform: scale(1.1); box-shadow: 0 0 25px rgba(241, 196, 15, 0.9); }
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.7; }
     }
   `;
   document.head.appendChild(style);
+}
+
+// ============================================================================
+// Debug Wall Visualization
+// ============================================================================
+
+function createDebugWalls() {
+  if (!root) return;
+
+  // Clear existing debug walls
+  for (const el of debugWallEls) {
+    el.remove();
+  }
+  debugWallEls = [];
+
+  // Create debug visualization for nearby boxes
+  const nearby = queryNearby(player);
+  const maxBoxes = 50; // Limit to prevent performance issues
+
+  for (let i = 0; i < Math.min(nearby.length, maxBoxes); i++) {
+    const box = nearby[i];
+    const el = document.createElement('div');
+    el.className = 'dom3d-debug-wall';
+
+    // Color based on Z height (lower = green, higher = red)
+    const zRatio = Math.min(1, (box.z + box.d) / 500);
+    const r = Math.floor(255 * zRatio);
+    const g = Math.floor(255 * (1 - zRatio));
+    const b = 100;
+
+    el.style.cssText = `
+      position: absolute;
+      left: 0;
+      top: 0;
+      width: ${box.w}px;
+      height: ${box.h}px;
+      background: rgba(${r}, ${g}, ${b}, 0.2);
+      border: 1px solid rgba(${r}, ${g}, ${b}, 0.6);
+      pointer-events: none;
+      will-change: transform;
+      transform: translate3d(${box.x}px, ${box.y}px, ${box.z}px);
+    `;
+
+    root.appendChild(el);
+    debugWallEls.push(el);
+  }
+}
+
+function updateDebugWalls() {
+  if (!root) return;
+
+  const nearby = queryNearby(player);
+  const maxBoxes = 50;
+
+  // If count mismatch, recreate
+  if (debugWallEls.length !== Math.min(nearby.length, maxBoxes)) {
+    createDebugWalls();
+    return;
+  }
+
+  // Update existing debug walls
+  for (let i = 0; i < debugWallEls.length && i < nearby.length; i++) {
+    const box = nearby[i];
+    const el = debugWallEls[i];
+
+    const zRatio = Math.min(1, (box.z + box.d) / 500);
+    const r = Math.floor(255 * zRatio);
+    const g = Math.floor(255 * (1 - zRatio));
+    const b = 100;
+
+    el.style.width = `${box.w}px`;
+    el.style.height = `${box.h}px`;
+    el.style.background = `rgba(${r}, ${g}, ${b}, 0.2)`;
+    el.style.borderColor = `rgba(${r}, ${g}, ${b}, 0.6)`;
+    el.style.transform = `translate3d(${box.x}px, ${box.y}px, ${box.z}px)`;
+  }
 }
 
 // ============================================================================
@@ -563,18 +664,16 @@ function loop(currentTime: number) {
 // ============================================================================
 
 function onScrollResize() {
-  rescan();
+  scanDOM(false);  // rescan without reinitializing player
   updateMarkers();
 }
 
 function updateMarkers() {
   if (startMarkerEl && startBox) {
-    startMarkerEl.style.left = `${startBox.x + startBox.w / 2 - 15}px`;
-    startMarkerEl.style.top = `${startBox.y + startBox.h / 2 - 15}px`;
+    startMarkerEl.style.transform = `translate3d(${startBox.x + startBox.w / 2 - 15}px, ${startBox.y + startBox.h / 2 - 15}px, ${startBox.z + startBox.d}px)`;
   }
   if (goalMarkerEl && goalBox) {
-    goalMarkerEl.style.left = `${goalBox.x + goalBox.w / 2 - 15}px`;
-    goalMarkerEl.style.top = `${goalBox.y + goalBox.h / 2 - 15}px`;
+    goalMarkerEl.style.transform = `translate3d(${goalBox.x + goalBox.w / 2 - 15}px, ${goalBox.y + goalBox.h / 2 - 15}px, ${goalBox.z + goalBox.d}px)`;
   }
 }
 
@@ -600,14 +699,15 @@ function setupMessageListener() {
 
 function init() {
   createOverlay();
-  scan();
+  scanDOM(true);  // scan with player initialization
   createPlayer();
   createDebugDisplay();
   createMarkers();
+  createDebugWalls();
   setupInput();
   setupMessageListener();
 
-  scanTimerId = window.setInterval(rescan, SCAN_INTERVAL);
+  scanTimerId = window.setInterval(() => scanDOM(false), SCAN_INTERVAL);
   window.addEventListener('scroll', onScrollResize, { passive: true });
   window.addEventListener('resize', onScrollResize, { passive: true });
 
@@ -637,6 +737,12 @@ function cleanup() {
   debugEl?.remove();
   document.getElementById('dom3d-marker-style')?.remove();
 
+  // Clean up debug walls
+  for (const el of debugWallEls) {
+    el.remove();
+  }
+  debugWallEls = [];
+
   root = null;
   playerEl = null;
   debugEl = null;
@@ -655,6 +761,7 @@ function cleanup() {
   jumpQueued = false;
   isGrounded = false;
   lastTime = 0;
+  currentTransform = '';
 
   (window as any).__DOM3D_ACTIVE__ = false;
 }

@@ -71,7 +71,7 @@ test.describe('z-index-world extension', () => {
     });
     expect(debugExists).toBe(true);
 
-    // Check overlay styles
+    // Check overlay styles (preserve-3d for 3D transforms)
     const overlayStyles = await page.evaluate(() => {
       const el = document.getElementById('dom3d-game-root');
       if (!el) return null;
@@ -79,13 +79,48 @@ test.describe('z-index-world extension', () => {
       return {
         position: style.position,
         zIndex: style.zIndex,
+        transformStyle: style.transformStyle,
       };
     });
 
     expect(overlayStyles?.position).toBe('fixed');
     expect(overlayStyles?.zIndex).toBe('2147483647');
+    expect(overlayStyles?.transformStyle).toBe('preserve-3d');
 
     console.log('Overlay test passed!');
+  });
+
+  test('player uses translate3d with Z component', async () => {
+    const page = await context.newPage();
+    await page.goto('https://example.com');
+    await page.waitForLoadState('domcontentloaded');
+
+    // Inject content script
+    await injectContentScript(page);
+    await page.waitForTimeout(500);
+
+    // Check player transform uses translate3d
+    const playerTransform = await page.evaluate(() => {
+      const el = document.getElementById('dom3d-player');
+      if (!el) return null;
+      return el.style.transform;
+    });
+
+    expect(playerTransform).toBeTruthy();
+    expect(playerTransform).toContain('translate3d');
+
+    // Parse the transform to verify Z component exists
+    const match = playerTransform?.match(/translate3d\(([^,]+)px,\s*([^,]+)px,\s*([^)]+)px\)/);
+    expect(match).toBeTruthy();
+    if (match) {
+      const z = parseFloat(match[3]);
+      expect(typeof z).toBe('number');
+      expect(isNaN(z)).toBe(false);
+      console.log('Player transform:', playerTransform);
+      console.log('Z value:', z);
+    }
+
+    console.log('translate3d test passed!');
   });
 
   test('player moves with vim keys', async () => {
@@ -97,14 +132,18 @@ test.describe('z-index-world extension', () => {
     await injectContentScript(page);
     await page.waitForTimeout(500);
 
-    // Get initial position (using left/top style)
+    // Get position from translate3d transform
     const getPlayerPos = async () => {
       return await page.evaluate(() => {
         const el = document.getElementById('dom3d-player');
         if (!el) return null;
+        const transform = el.style.transform;
+        const match = transform.match(/translate3d\(([^,]+)px,\s*([^,]+)px,\s*([^)]+)px\)/);
+        if (!match) return null;
         return {
-          x: parseFloat(el.style.left) || 0,
-          y: parseFloat(el.style.top) || 0,
+          x: parseFloat(match[1]),
+          y: parseFloat(match[2]),
+          z: parseFloat(match[3]),
         };
       });
     };
@@ -152,7 +191,7 @@ test.describe('z-index-world extension', () => {
     console.log('Movement tests passed!');
   });
 
-  test('jump with space key changes scale (z visual)', async () => {
+  test('jump changes Z value in translate3d', async () => {
     const page = await context.newPage();
     await page.goto('https://example.com');
     await page.waitForLoadState('domcontentloaded');
@@ -161,14 +200,14 @@ test.describe('z-index-world extension', () => {
     await injectContentScript(page);
     await page.waitForTimeout(500);
 
-    // Get player scale (indicates Z height)
-    const getPlayerScale = async () => {
+    // Get Z from translate3d transform
+    const getPlayerZ = async () => {
       return await page.evaluate(() => {
         const el = document.getElementById('dom3d-player');
         if (!el) return null;
         const transform = el.style.transform;
-        const match = transform.match(/scale\(([^)]+)\)/);
-        if (!match) return 1;
+        const match = transform.match(/translate3d\([^,]+px,\s*[^,]+px,\s*([^)]+)px\)/);
+        if (!match) return null;
         return parseFloat(match[1]);
       });
     };
@@ -176,25 +215,25 @@ test.describe('z-index-world extension', () => {
     // Wait for player to settle
     await page.waitForTimeout(500);
 
-    const initialScale = await getPlayerScale();
-    console.log('Initial scale:', initialScale);
+    const initialZ = await getPlayerZ();
+    console.log('Initial Z:', initialZ);
 
     // Jump
     await page.keyboard.press(' ');
 
-    // Sample scale multiple times to catch the jump peak
-    let maxScale = initialScale ?? 1;
+    // Sample Z multiple times to catch the jump peak
+    let maxZ = initialZ ?? 0;
     for (let i = 0; i < 20; i++) {
       await page.waitForTimeout(30);
-      const scale = await getPlayerScale();
-      if (scale !== null && scale > maxScale) {
-        maxScale = scale;
+      const z = await getPlayerZ();
+      if (z !== null && z > maxZ) {
+        maxZ = z;
       }
     }
-    console.log('Max scale during jump:', maxScale);
+    console.log('Max Z during jump:', maxZ);
 
-    // Scale should increase during jump (Z goes up)
-    expect(maxScale).toBeGreaterThan(initialScale ?? 1);
+    // Z should increase during jump
+    expect(maxZ).toBeGreaterThan(initialZ ?? 0);
 
     console.log('Jump test passed!');
   });
@@ -236,7 +275,7 @@ test.describe('z-index-world extension', () => {
     console.log('Markers test passed!');
   });
 
-  test('player is 2D div with proper styling', async () => {
+  test('debug display shows transform value', async () => {
     const page = await context.newPage();
     await page.goto('https://example.com');
     await page.waitForLoadState('domcontentloaded');
@@ -245,23 +284,15 @@ test.describe('z-index-world extension', () => {
     await injectContentScript(page);
     await page.waitForTimeout(500);
 
-    // Check player style
-    const playerStyle = await page.evaluate(() => {
-      const player = document.getElementById('dom3d-player');
-      if (!player) return null;
-      const style = getComputedStyle(player);
-      return {
-        position: style.position,
-        width: style.width,
-        height: style.height,
-        borderRadius: style.borderRadius,
-      };
+    // Check debug display contains transform info
+    const debugContent = await page.evaluate(() => {
+      const debug = document.getElementById('dom3d-debug');
+      return debug?.innerHTML ?? '';
     });
 
-    expect(playerStyle?.position).toBe('absolute');
-    expect(playerStyle?.width).toBe('20px');
-    expect(playerStyle?.height).toBe('20px');
+    expect(debugContent).toContain('translate3d');
+    expect(debugContent).toContain('transform:');
 
-    console.log('Player style test passed!');
+    console.log('Debug display test passed!');
   });
 });
