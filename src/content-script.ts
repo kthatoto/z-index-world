@@ -46,6 +46,10 @@ const GRAVITY = 700;     // pixels per second^2
 const MIN_JUMP_VZ = 300; // minimum jump velocity
 const JUMP_MARGIN = 1.3; // 30% margin for comfortable jumping
 
+// Jump velocity caps to prevent outlier z-index from breaking gameplay
+const MAX_STEP_FOR_JUMP = 200;  // max step height considered for jump calculation
+const MAX_JUMP_VZ = 500;        // absolute max jump velocity
+
 const EXCLUDED_TAGS = new Set([
   'HTML', 'BODY', 'HEAD', 'SCRIPT', 'STYLE', 'META', 'LINK', 'NOSCRIPT',
   'BR', 'WBR', 'TEMPLATE', 'SLOT', 'SVG', 'PATH', 'IFRAME'
@@ -61,12 +65,6 @@ let debugEl: HTMLDivElement | null = null;
 let startMarkerEl: HTMLDivElement | null = null;
 let goalMarkerEl: HTMLDivElement | null = null;
 
-// Z-planes system for Layers visualization
-let zPlanesContainer: HTMLDivElement | null = null;
-let planes: Map<number, HTMLDivElement> = new Map();
-let planeProxies: Map<number, HTMLDivElement[]> = new Map();
-const BUCKET_SIZE = 3;
-const DEPTH_STEP = 40;
 
 // Store original styles for cleanup
 let modifiedElements: { el: HTMLElement; originalTransform: string }[] = [];
@@ -88,6 +86,7 @@ let jumpQueued = false;
 let isGrounded = false;
 let groundZ = 0;  // Z position of the floor the player is standing on (or would land on)
 let jumpVz = MIN_JUMP_VZ;  // Dynamic jump velocity based on stage
+let currentMaxStep = 0;   // For debug display (capped value)
 let goalReached = false;
 let celebrationEl: HTMLDivElement | null = null;
 
@@ -255,9 +254,6 @@ function scanDOM(initPlayer: boolean = false) {
     calculateJumpVelocity();
     initPlayerPosition();
   }
-
-  // Rebuild Z planes after each scan
-  rebuildZPlanes();
 }
 
 function pickStartGoal() {
@@ -271,11 +267,14 @@ function pickStartGoal() {
 }
 
 function calculateJumpVelocity() {
-  // Exclude base floor (last element) from calculation if there are other boxes
-  const stageBoxes = boxes.length > 1 ? boxes.slice(0, -1) : boxes;
+  // Use nearby boxes only to prevent outlier z-index from affecting jump
+  const nearby = queryNearby(player);
+  // Exclude base floor from calculation
+  const stageBoxes = nearby.filter(b => b.d > 1);  // base floor has d=1
 
   if (stageBoxes.length === 0) {
     jumpVz = MIN_JUMP_VZ;
+    currentMaxStep = 0;
     return;
   }
 
@@ -290,12 +289,17 @@ function calculateJumpVelocity() {
     if (step > maxStep) maxStep = step;
   }
 
+  // Cap maxStep to prevent outlier influence
+  maxStep = Math.min(maxStep, MAX_STEP_FOR_JUMP);
+  currentMaxStep = maxStep;
+
   // Calculate required jump velocity with margin
   // Physics: maxHeight = v² / (2g), so v = sqrt(2 * g * h)
   const requiredHeight = maxStep * JUMP_MARGIN;
   const requiredVz = Math.sqrt(2 * GRAVITY * requiredHeight);
 
-  jumpVz = Math.max(MIN_JUMP_VZ, requiredVz);
+  // Apply both min and max caps
+  jumpVz = Math.min(MAX_JUMP_VZ, Math.max(MIN_JUMP_VZ, requiredVz));
 }
 
 function initPlayerPosition() {
@@ -419,8 +423,8 @@ function physics(dt: number) {
       const penBack = (box.z + box.d) - player.z;      // box's top into player's bottom
 
       if (penFront < penBack) {
-        // Hit ceiling
-        player.z = box.z - player.d;
+        // Hit ceiling - clamp to prevent going negative
+        player.z = Math.max(0, box.z - player.d);
         player.vz = 0;
       } else {
         // Land on floor
@@ -634,6 +638,10 @@ function render() {
       <div>vZ: <span style="color: #ff0">${player.vz.toFixed(0)}</span></div>
       <div>groundZ: <span style="color: #f0f">${groundZ.toFixed(0)}</span></div>
       <div>Grounded: <span style="color: ${isGrounded ? '#0f0' : '#f00'}">${isGrounded ? 'Yes' : 'No'}</span></div>
+      <div style="margin-top: 4px; border-top: 1px solid #444; padding-top: 4px;">
+        <div>jumpVz: <span style="color: #0ff">${jumpVz.toFixed(0)}</span></div>
+        <div>maxStep: <span style="color: #fa0">${currentMaxStep.toFixed(0)}</span></div>
+      </div>
       <div style="margin-top: 4px; font-size: 10px; color: #888;">HJKL:Move Space:Jump</div>
     `;
   }
@@ -790,131 +798,6 @@ function createMarkers() {
   document.head.appendChild(style);
 }
 
-// ============================================================================
-// Z-Planes System (for Layers visualization)
-// ============================================================================
-
-function createZPlanesContainer() {
-  if (!root) return;
-
-  zPlanesContainer = document.createElement('div');
-  zPlanesContainer.id = 'dom3d-zplanes';
-  zPlanesContainer.style.cssText = `
-    position: absolute;
-    inset: 0;
-    pointer-events: none;
-    transform-style: preserve-3d;
-  `;
-  root.appendChild(zPlanesContainer);
-}
-
-function rebuildZPlanes() {
-  if (!zPlanesContainer) return;
-
-  // Exclude base floor (last element) from plane visualization
-  const stageBoxes = boxes.length > 1 ? boxes.slice(0, -1) : [];
-
-  if (stageBoxes.length === 0) {
-    // No stage boxes - clear all planes
-    for (const [bucketId, plane] of planes) {
-      plane.remove();
-    }
-    planes.clear();
-    planeProxies.clear();
-    return;
-  }
-
-  // Get unique Z values and create ranking
-  const uniqueZ = [...new Set(stageBoxes.map(b => b.z))].sort((a, b) => a - b);
-
-  // Group boxes by bucket
-  const bucketBoxes: Map<number, Box[]> = new Map();
-  for (const box of stageBoxes) {
-    const rank = uniqueZ.indexOf(box.z);
-    const bucketId = Math.floor(rank / BUCKET_SIZE);
-    if (!bucketBoxes.has(bucketId)) {
-      bucketBoxes.set(bucketId, []);
-    }
-    bucketBoxes.get(bucketId)!.push(box);
-  }
-
-  // Remove planes that are no longer needed
-  const neededBuckets = new Set(bucketBoxes.keys());
-  for (const [bucketId, plane] of planes) {
-    if (!neededBuckets.has(bucketId)) {
-      plane.remove();
-      planes.delete(bucketId);
-      planeProxies.delete(bucketId);
-    }
-  }
-
-  // Create or update planes for each bucket
-  for (const [bucketId, boxesInBucket] of bucketBoxes) {
-    let plane = planes.get(bucketId);
-    let proxies = planeProxies.get(bucketId) || [];
-
-    // Create plane if it doesn't exist
-    if (!plane) {
-      plane = document.createElement('div');
-      plane.className = 'dom3d-zplane';
-      plane.style.cssText = `
-        position: absolute;
-        inset: 0;
-        pointer-events: none;
-        transform-style: preserve-3d;
-      `;
-      zPlanesContainer.appendChild(plane);
-      planes.set(bucketId, plane);
-    }
-
-    // Update plane transform based on bucket
-    plane.style.transform = `translate3d(0px, 0px, ${bucketId * DEPTH_STEP}px)`;
-
-    // Ensure we have enough proxy divs (pool reuse)
-    while (proxies.length < boxesInBucket.length) {
-      const proxy = document.createElement('div');
-      proxy.className = 'dom3d-proxy';
-      proxy.style.cssText = `
-        position: absolute;
-        left: 0;
-        top: 0;
-        border: 1px solid rgba(0, 0, 0, 0.25);
-        background: transparent;
-        pointer-events: none;
-        box-sizing: border-box;
-      `;
-      plane.appendChild(proxy);
-      proxies.push(proxy);
-    }
-
-    // Hide excess proxies
-    for (let i = boxesInBucket.length; i < proxies.length; i++) {
-      proxies[i].style.display = 'none';
-    }
-
-    // Update proxy positions and sizes
-    for (let i = 0; i < boxesInBucket.length; i++) {
-      const box = boxesInBucket[i];
-      const proxy = proxies[i];
-      proxy.style.display = '';
-      proxy.style.width = `${box.w}px`;
-      proxy.style.height = `${box.h}px`;
-      proxy.style.transform = `translate3d(${box.x}px, ${box.y}px, 0px)`;
-    }
-
-    planeProxies.set(bucketId, proxies);
-  }
-}
-
-function cleanupZPlanes() {
-  for (const [_, plane] of planes) {
-    plane.remove();
-  }
-  planes.clear();
-  planeProxies.clear();
-  zPlanesContainer?.remove();
-  zPlanesContainer = null;
-}
 
 // ============================================================================
 // Input
@@ -1021,8 +904,7 @@ function init() {
   document.body.style.transformStyle = 'preserve-3d';
 
   createOverlay();
-  createZPlanesContainer();
-  scanDOM(true);  // scan with player initialization (also builds Z planes)
+  scanDOM(true);  // scan with player initialization
   createPlayer();
   createDebugDisplay();
   createMarkers();
@@ -1057,9 +939,6 @@ function cleanup() {
   removeInput();
   window.removeEventListener('scroll', onScrollResize);
   window.removeEventListener('resize', onScrollResize);
-
-  // Cleanup Z planes system
-  cleanupZPlanes();
 
   // Restore modified elements
   restoreModifiedElements();
@@ -1096,6 +975,7 @@ function cleanup() {
   isGrounded = false;
   groundZ = 0;
   jumpVz = MIN_JUMP_VZ;
+  currentMaxStep = 0;
   goalReached = false;
   lastTime = 0;
   currentTransform = '';
