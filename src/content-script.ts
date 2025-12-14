@@ -42,8 +42,8 @@ const STEP_HEIGHT = 32;
 
 // Physics constants (per second, will be multiplied by dt)
 const MOVE_SPEED = 300;  // pixels per second
-const GRAVITY = 800;     // pixels per second^2
-const JUMP_VZ = 350;     // pixels per second
+const GRAVITY = 700;     // pixels per second^2
+const JUMP_VZ = 420;     // pixels per second
 
 const EXCLUDED_TAGS = new Set([
   'HTML', 'BODY', 'HEAD', 'SCRIPT', 'STYLE', 'META', 'LINK', 'NOSCRIPT',
