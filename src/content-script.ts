@@ -43,7 +43,8 @@ const STEP_HEIGHT = 32;
 // Physics constants (per second, will be multiplied by dt)
 const MOVE_SPEED = 300;  // pixels per second
 const GRAVITY = 700;     // pixels per second^2
-const JUMP_VZ = 420;     // pixels per second
+const MIN_JUMP_VZ = 300; // minimum jump velocity
+const JUMP_MARGIN = 1.3; // 30% margin for comfortable jumping
 
 const EXCLUDED_TAGS = new Set([
   'HTML', 'BODY', 'HEAD', 'SCRIPT', 'STYLE', 'META', 'LINK', 'NOSCRIPT',
@@ -79,6 +80,7 @@ let keys = { h: false, j: false, k: false, l: false, space: false };
 let jumpQueued = false;
 let isGrounded = false;
 let groundZ = 0;  // Z position of the floor the player is standing on (or would land on)
+let jumpVz = MIN_JUMP_VZ;  // Dynamic jump velocity based on stage
 
 let running = false;
 let rafId: number | null = null;
@@ -233,6 +235,7 @@ function scanDOM(initPlayer: boolean = false) {
 
   if (initPlayer) {
     pickStartGoal();
+    calculateJumpVelocity();
     initPlayerPosition();
   }
 }
@@ -250,6 +253,30 @@ function pickStartGoal() {
 
   startBox = boxes.reduce((a, b) => a.z < b.z ? a : b);
   goalBox = boxes.reduce((a, b) => a.z > b.z ? a : b);
+}
+
+function calculateJumpVelocity() {
+  if (boxes.length < 2) {
+    jumpVz = MIN_JUMP_VZ;
+    return;
+  }
+
+  // Get all platform top heights (z + d), sorted
+  const tops = boxes.map(b => b.z + b.d).sort((a, b) => a - b);
+
+  // Find max step height between consecutive platforms
+  let maxStep = 0;
+  for (let i = 1; i < tops.length; i++) {
+    const step = tops[i] - tops[i - 1];
+    if (step > maxStep) maxStep = step;
+  }
+
+  // Calculate required jump velocity with margin
+  // Physics: maxHeight = v² / (2g), so v = sqrt(2 * g * h)
+  const requiredHeight = maxStep * JUMP_MARGIN;
+  const requiredVz = Math.sqrt(2 * GRAVITY * requiredHeight);
+
+  jumpVz = Math.max(MIN_JUMP_VZ, requiredVz);
 }
 
 function initPlayerPosition() {
@@ -286,7 +313,7 @@ function physics(dt: number) {
 
   // Jump: only when grounded
   if (jumpQueued && isGrounded) {
-    player.vz = JUMP_VZ;
+    player.vz = jumpVz;
     isGrounded = false;
   }
   jumpQueued = false;
@@ -779,6 +806,7 @@ function cleanup() {
   jumpQueued = false;
   isGrounded = false;
   groundZ = 0;
+  jumpVz = MIN_JUMP_VZ;
   lastTime = 0;
   currentTransform = '';
 
